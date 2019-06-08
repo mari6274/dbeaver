@@ -517,7 +517,7 @@ public class DataSourceDescriptor
         filterMap.clear();
     }
 
-    void updateObjectFilter(String typeName, @Nullable String objectID, DBSObjectFilter filter)
+    public void updateObjectFilter(String typeName, @Nullable String objectID, DBSObjectFilter filter)
     {
         FilterMapping filterMapping = filterMap.get(typeName);
         if (filterMapping == null) {

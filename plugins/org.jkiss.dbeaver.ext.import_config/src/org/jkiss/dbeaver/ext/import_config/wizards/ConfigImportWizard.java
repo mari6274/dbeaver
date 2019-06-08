@@ -23,11 +23,13 @@ import org.eclipse.ui.IImportWizard;
 import org.eclipse.ui.IWorkbench;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.import_config.ImportConfigMessages;
+import org.jkiss.dbeaver.model.DBPDataSourceFolder;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriverLibrary;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCURL;
+import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
 import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
@@ -192,6 +194,9 @@ public abstract class ConfigImportWizard extends Wizard implements IImportWizard
             DataSourceDescriptor.generateNewId(connectionInfo.getDriver()),
             connectionInfo.getDriver(),
             config);
+        DBSObjectFilter filter = new DBSObjectFilter();
+        filter.addInclude(connectionInfo.getUser());
+        dataSource.updateObjectFilter("org.jkiss.dbeaver.model.struct.rdb.DBSSchema", null, filter);
         dataSource.setName(name);
         dataSource.setSavePassword(!CommonUtils.isEmpty(config.getUserPassword()));
         dataSourceRegistry.addDataSource(dataSource);
@@ -202,6 +207,7 @@ public abstract class ConfigImportWizard extends Wizard implements IImportWizard
         String sampleURL = connectionInfo.getDriverInfo().getSampleURL();
         if (connectionInfo.getDriver() != null) {
             sampleURL = connectionInfo.getDriver().getSampleURL();
+            sampleURL = "jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=5)(RETRY_COUNT=3)(ADDRESS=(LOAD_BALANCE=on)(FAILOVER=on)(PROTOCOL=TCP)(HOST={host})(PORT={port}))(CONNECT_DATA=(SERVICE_NAME={database})))";
         }
         //connectionInfo.getDriver()
         String url = connectionInfo.getUrl();

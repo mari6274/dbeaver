@@ -16,14 +16,20 @@
  */
 package org.jkiss.dbeaver.ext.import_config.wizards;
 
+import java.awt.Checkbox;
+
 import org.eclipse.jface.dialogs.IMessageProvider;
+import org.eclipse.jface.viewers.CheckboxCellEditor;
 import org.eclipse.jface.wizard.WizardPage;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableItem;
 import org.jkiss.dbeaver.DBException;
@@ -78,6 +84,35 @@ public abstract class ConfigImportWizardPage extends WizardPage {
             }
         });
 
+        Button button = new Button(placeholder, NONE);
+        button.setText("toggle select all");
+        button.addListener(SWT.Selection, new Listener() {
+			
+			@Override
+			public void handleEvent(Event event) {
+				TableItem[] items = connectionTable.getItems();
+				boolean allChecked = true;
+				for (TableItem item : items) {
+					if (!item.getChecked()) {
+						allChecked = false;
+						break;
+					}
+				}
+				if (allChecked) {
+					for (TableItem item : items) {
+						item.setChecked(false);
+						((ImportConnectionInfo) item.getData()).setChecked(false);
+					}
+				} else {
+					for (TableItem item : items) {
+						item.setChecked(true);
+						((ImportConnectionInfo) item.getData()).setChecked(true);
+					}
+				}
+				getContainer().updateButtons();
+			}
+		});
+        
         setControl(placeholder);
     }
 

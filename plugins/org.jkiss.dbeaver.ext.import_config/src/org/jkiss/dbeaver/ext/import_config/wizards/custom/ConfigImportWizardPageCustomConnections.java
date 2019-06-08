@@ -118,7 +118,7 @@ public class ConfigImportWizardPageCustomConnections extends ConfigImportWizardP
             conProps.get("host"),
             conProps.get("port"),
             conProps.get("database"),
-            conProps.get("user"),
+            conProps.get("username"),
             conProps.get("password")
         ));
     }
