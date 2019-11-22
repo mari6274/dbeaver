@@ -17,8 +17,6 @@
  */
 package org.jkiss.dbeaver.ext.db2.model;
 
-import java.sql.ResultSet;
-
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -31,7 +29,6 @@ import org.jkiss.dbeaver.ext.db2.model.dict.DB2YesNo;
 import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBPHiddenObject;
-import org.jkiss.dbeaver.model.DBPNamedObject2;
 import org.jkiss.dbeaver.model.impl.DBPositiveNumberTransformer;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCTableColumn;
@@ -42,13 +39,15 @@ import org.jkiss.dbeaver.model.struct.DBSTypedObjectEx;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableColumn;
 import org.jkiss.utils.CommonUtils;
 
+import java.sql.ResultSet;
+
 /**
  * DB2 Table Column
  * 
  * @author Denis Forveille
  */
 public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
-    implements DBSTableColumn, DBSTypedObjectEx, DBPHiddenObject, DBPNamedObject2 {
+    implements DBSTableColumn, DBSTypedObjectEx, DBPHiddenObject {
 
     private DB2DataType dataType;
     private DB2Schema dataTypeSchema;
@@ -168,10 +167,12 @@ public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
         setMaxLength(50L);
         setOrdinalPosition(-1);
         this.dataType = tableBase.getDataSource().getDataTypeCache().getCachedObject("VARCHAR");
-        this.dataTypeSchema = dataType.getSchema();
-        setTypeName(dataType.getFullyQualifiedName(DBPEvaluationContext.DML));
-        setValueType(dataType.getTypeID());
-        setRequired(true);
+        if (dataType != null) {
+            this.dataTypeSchema = dataType.getSchema();
+            setTypeName(dataType.getFullyQualifiedName(DBPEvaluationContext.DML));
+            setValueType(dataType.getTypeID());
+        }
+        setRequired(false);
     }
 
     // -----------------

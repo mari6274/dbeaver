@@ -28,6 +28,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
@@ -35,10 +36,10 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSDataContainer;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.ui.UIUtils;
-import org.jkiss.dbeaver.ui.editors.entity.IEntityDataContainer;
-import org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerObjectOpen;
 import org.jkiss.dbeaver.ui.controls.resultset.*;
 import org.jkiss.dbeaver.ui.editors.AbstractDatabaseObjectEditor;
+import org.jkiss.dbeaver.ui.editors.entity.IEntityDataEditor;
+import org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerObjectOpen;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 
 import java.util.Collections;
@@ -47,7 +48,7 @@ import java.util.Collections;
  * AbstractDataEditor
  */
 public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends AbstractDatabaseObjectEditor<OBJECT_TYPE>
-    implements IResultSetContainer,IResultSetListener,IEntityDataContainer
+    implements IResultSetContainer,IResultSetListener,IEntityDataEditor
 {
     private static final Log log = Log.getLog(AbstractDataEditor.class);
 
@@ -55,11 +56,14 @@ public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends 
     private boolean loaded = false;
     //private boolean running = false;
     private Composite parent;
+    private DBPProject project;
 
     @Override
     public void createPartControl(Composite parent)
     {
         this.parent = parent;
+        // Cache project here. It may be inaccessible thru db object in case of later disconnect
+        this.project = getDatabaseObject().getDataSource().getContainer().getProject();
     }
 
     @Override
@@ -70,12 +74,7 @@ public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends 
         if (!loaded && !isSuspendDataQuery()) {
             if (isReadyToRun()) {
                 resultSetView.setStatus(getDataQueryMessage());
-                DBDDataFilter dataFilter = getEditorDataFilter();
-                if (dataFilter == null) {
-                    resultSetView.refresh();
-                } else {
-                    resultSetView.refreshWithFilter(dataFilter);
-                }
+                refreshWithFilters();
                 loaded = true;
             }
         }
@@ -113,6 +112,12 @@ public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends 
             resultSetView = null;
         }
         super.dispose();
+    }
+
+    @NotNull
+    @Override
+    public DBPProject getProject() {
+        return project;
     }
 
     @Nullable
@@ -239,7 +244,16 @@ public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends 
     @Override
     public void refreshPart(Object source, boolean force) {
         if (force && resultSetView != null && resultSetView.hasData() && !resultSetView.isRefreshInProgress()) {
+            refreshWithFilters();
+        }
+    }
+
+    private void refreshWithFilters() {
+        DBDDataFilter dataFilter = getEditorDataFilter();
+        if (dataFilter == null) {
             resultSetView.refresh();
+        } else {
+            resultSetView.refreshWithFilter(dataFilter);
         }
     }
 

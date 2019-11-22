@@ -151,11 +151,12 @@ class ConnectionPageInitialization extends ConnectionWizardPage implements IData
     }
 
     private void loadDatabaseSettings(DBRProgressMonitor monitor, DBPDataSource dataSource) throws InvocationTargetException, InterruptedException {
+        DBPDataSourceContainer dataSourceContainer = dataSource.getContainer();
         Collection<DBPTransactionIsolation> txnLevels = CommonUtils.safeCollection(dataSource.getInfo().getSupportedTransactionsIsolation());
-        Integer levelCode = dataSourceDescriptor.getDefaultTransactionsIsolation();
+        Integer levelCode = dataSourceContainer.getDefaultTransactionsIsolation();
 
         UIUtils.syncExec(() -> {
-            autocommit.setSelection(dataSourceDescriptor.isDefaultAutoCommit());
+            autocommit.setSelection(dataSourceContainer.isDefaultAutoCommit());
             //isolationLevel.setEnabled(!autocommit.getSelection());
             supportedLevels.clear();
 
@@ -341,6 +342,7 @@ class ConnectionPageInitialization extends ConnectionWizardPage implements IData
 
     @Override
     public void testConnection(DBCSession session) {
+        // We load settings to fill txn isolation levels and schema names (#6794)
         try {
             loadDatabaseSettings(session.getProgressMonitor(), session.getDataSource());
         } catch (InvocationTargetException e) {

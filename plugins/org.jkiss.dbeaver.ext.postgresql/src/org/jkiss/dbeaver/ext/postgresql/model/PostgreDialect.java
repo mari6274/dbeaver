@@ -17,7 +17,6 @@
 package org.jkiss.dbeaver.ext.postgresql.model;
 
 import org.jkiss.code.NotNull;
-import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
 import org.jkiss.dbeaver.ext.postgresql.model.data.PostgreBinaryFormatter;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
@@ -25,8 +24,8 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCDatabaseMetaData;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCSQLDialect;
 import org.jkiss.dbeaver.model.impl.sql.BasicSQLDialect;
-import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.struct.DBSAttributeBase;
 import org.jkiss.utils.ArrayUtils;
 
 import java.util.Arrays;
@@ -42,6 +41,13 @@ public class PostgreDialect extends JDBCSQLDialect {
             "SHOW", "SET"
         }
     );
+    private static final String[][] PG_STRING_QUOTES = {
+        {"'", "'"},
+        // Simple dollar quotes are string delimiters.
+        // Dollar quotes with tags are block toggles.
+        // See PostgreDollarQuoteRule for another dollar quotes processing
+        {"$$", "$$"}
+    };
 
     //region KeyWords
 
@@ -722,15 +728,10 @@ public class PostgreDialect extends JDBCSQLDialect {
         return SQLDialect.USAGE_ALL;
     }
 
+    @NotNull
     @Override
     public String[] getParametersPrefixes() {
         return new String[] { "$" };
-    }
-
-    @Nullable
-    @Override
-    public String getBlockToggleString() {
-        return "$" + SQLConstants.KEYWORD_PATTERN_CHARS + "$";
     }
 
     @NotNull
@@ -743,6 +744,23 @@ public class PostgreDialect extends JDBCSQLDialect {
     public String[][] getBlockBoundStrings() {
         // PostgreSQL-specific blocks ($$) should be used everywhere
         return null;//super.getBlockBoundStrings();
+    }
+
+    @NotNull
+    @Override
+    public String escapeScriptValue(DBSAttributeBase attribute, @NotNull Object value, @NotNull String strValue) {
+        if (value.getClass().getName().equals(PostgreConstants.PG_OBJECT_CLASS)) {
+            // TODO: we need to add value handlers for all PG data types.
+            // For now we use workaround: re[eresent objects as strings
+            return '\'' + escapeString(strValue) + '\'';
+        }
+        return super.escapeScriptValue(attribute, value, strValue);
+    }
+
+    @NotNull
+    @Override
+    public String[][] getStringQuoteStrings() {
+        return PG_STRING_QUOTES;
     }
 
     @Override

@@ -57,10 +57,7 @@ import org.jkiss.dbeaver.model.sql.parser.SQLParserPartitions;
 import org.jkiss.dbeaver.model.sql.parser.SQLWordDetector;
 import org.jkiss.dbeaver.model.text.TextUtils;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
-import org.jkiss.dbeaver.ui.ActionUtils;
-import org.jkiss.dbeaver.ui.ICommentsSupport;
-import org.jkiss.dbeaver.ui.IErrorVisualizer;
-import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.editors.BaseTextEditorCommands;
 import org.jkiss.dbeaver.ui.editors.EditorUtils;
 import org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorMessages;
@@ -166,6 +163,13 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         setKeyBindingScopes(getKeyBindingContexts());  //$NON-NLS-1$
 
         completionContext = new SQLEditorCompletionContext(this);
+    }
+
+    @Override
+    protected boolean isReadOnly() {
+        IDocumentProvider provider = getDocumentProvider();
+        return provider instanceof IDocumentProviderExtension &&
+            ((IDocumentProviderExtension) provider).isReadOnly(getEditorInput());
     }
 
     public static boolean isBigScript(@Nullable IEditorInput editorInput) {
@@ -526,14 +530,7 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         a.setActionDefinitionId(BaseTextEditorCommands.CMD_CONTENT_FORMAT);
         setAction(SQLEditorContributor.ACTION_CONTENT_FORMAT_PROPOSAL, a);
 
-        setAction(ITextEditorActionConstants.CONTEXT_PREFERENCES, new Action(SQLEditorMessages.editor_sql_preference) { //$NON-NLS-1$
-            public void run() {
-                Shell shell = getSourceViewer().getTextWidget().getShell();
-                String[] preferencePages = collectContextMenuPreferencePages();
-                if (preferencePages.length > 0 && (shell == null || !shell.isDisposed()))
-                    PreferencesUtil.createPreferenceDialogOn(shell, preferencePages[0], preferencePages, getEditorInput()).open();
-            }
-        });
+        setAction(ITextEditorActionConstants.CONTEXT_PREFERENCES, new ShowPreferencesAction());
 /*
         // Add the task action to the Edit pulldown menu (bookmark action is  'free')
         ResourceAction ra = new AddTaskAction(bundle, "AddTask.", this);
@@ -611,23 +608,25 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
             }
         }
 
-/*
-        Color fgColor = ruleManager.getColor(SQLConstants.CONFIG_COLOR_TEXT);
-        Color bgColor = ruleManager.getColor(getDataSource() == null ?
-            SQLConstants.CONFIG_COLOR_DISABLED :
-            SQLConstants.CONFIG_COLOR_BACKGROUND);
-        final StyledText textWidget = getTextViewer().getTextWidget();
-        if (fgColor != null) {
-            textWidget.setForeground(fgColor);
-        }
-        textWidget.setBackground(bgColor);
-*/
+        final IVerticalRuler verticalRuler = getVerticalRuler();
+
+        /*if (isReadOnly()) {
+            //Color fgColor = ruleManager.getColor(SQLConstants.CONFIG_COLOR_TEXT);
+            Color bgColor = ruleManager.getColor(SQLConstants.CONFIG_COLOR_DISABLED);
+            TextViewer textViewer = getTextViewer();
+            if (textViewer != null) {
+                final StyledText textWidget = textViewer.getTextWidget();
+                textWidget.setBackground(bgColor);
+                if (verticalRuler != null && verticalRuler.getControl() != null) {
+                    verticalRuler.getControl().setBackground(bgColor);
+                }
+            }
+        }*/
 
         // Update configuration
         if (getSourceViewerConfiguration() instanceof SQLEditorSourceViewerConfiguration) {
             ((SQLEditorSourceViewerConfiguration) getSourceViewerConfiguration()).onDataSourceChange();
         }
-        final IVerticalRuler verticalRuler = getVerticalRuler();
         if (verticalRuler != null) {
             verticalRuler.update();
         }
@@ -737,6 +736,10 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
                 }
                 if (currentLine == firstLine) {
                     for (String delim : statementDelimiters) {
+                        if (Character.isLetterOrDigit(delim.charAt(0))) {
+                            // Skip literal delimiters
+                            continue;
+                        }
                         final int offset = TextUtils.getOffsetOf(document, firstLine, delim);
                         if (offset >= 0 ) {
                             int delimOffset = document.getLineOffset(firstLine) + offset + delim.length();
@@ -891,7 +894,8 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
     }
 
     protected SQLScriptElement parseQuery(final IDocument document, final int startPos, final int endPos, final int currentPos, final boolean scriptMode, final boolean keepDelimiters) {
-        if (endPos - startPos <= 0) {
+        int length = endPos - startPos;
+        if (length <= 0 || length > document.getLength()) {
             return null;
         }
         SQLDialect dialect = getSQLDialect();
@@ -906,7 +910,7 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         String blockTogglePattern = null;
         int lastTokenLineFeeds = 0;
         int prevNotEmptyTokenType = SQLToken.T_UNKNOWN;
-        String firstKeyword = null;
+        String lastKeyword = null;
         for (; ; ) {
             IToken token = ruleManager.nextToken();
             int tokenOffset = ruleManager.getTokenOffset();
@@ -1004,7 +1008,7 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
                     lastTokenLineFeeds = tokenLength < 2 ? 0 : countLineFeeds(document, tokenOffset + tokenLength - 2, 2);
                 }
 
-                if (firstKeyword == null && tokenLength > 0 && !token.isWhitespace()) {
+                if (tokenLength > 0 && !token.isWhitespace()) {
                     switch (tokenType) {
                         case SQLToken.T_BLOCK_BEGIN:
                         case SQLToken.T_BLOCK_END:
@@ -1012,7 +1016,7 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
                         case SQLToken.T_BLOCK_HEADER:
                         case SQLToken.T_UNKNOWN:
                             try {
-                                firstKeyword = document.get(tokenOffset, tokenLength);
+                                lastKeyword = document.get(tokenOffset, tokenLength);
                             } catch (BadLocationException e) {
                                 log.error("Error getting first keyword", e);
                             }
@@ -1083,12 +1087,10 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
                         String queryText = document.get(statementStart, tokenOffset - statementStart);
                         queryText = SQLUtils.fixLineFeeds(queryText);
 
-                        if (isDelimiter && (keepDelimiters || (hasBlocks ?
-                            dialect.isDelimiterAfterBlock() && firstKeyword != null &&
-                                (SQLUtils.isBlockStartKeyword(dialect, firstKeyword) ||
-                                    ArrayUtils.containsIgnoreCase(dialect.getDDLKeywords(), firstKeyword) ||
-                                    ArrayUtils.containsIgnoreCase(dialect.getBlockHeaderStrings(), firstKeyword)) :
-                            dialect.isDelimiterAfterQuery()))) {
+                        if (isDelimiter && (keepDelimiters ||
+                            (hasBlocks && dialect.isDelimiterAfterQuery()) ||
+                            (dialect.isDelimiterAfterBlock() && SQLConstants.BLOCK_END.equals(lastKeyword))))
+                        {
                             if (delimiterText != null && delimiterText.equals(SQLConstants.DEFAULT_STATEMENT_DELIMITER)) {
                                 // Add delimiter in the end of query. Do this only for semicolon delimiters.
                                 // For SQL server add it in the end of query. For Oracle only after END clause
@@ -1151,6 +1153,7 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         final SQLDialect sqlDialect = getSQLDialect();
         boolean supportParamsInDDL = getActivePreferenceStore().getBoolean(ModelPreferences.SQL_PARAMETERS_IN_DDL_ENABLED);
         boolean execQuery = false;
+        boolean ddlQuery = false;
         List<SQLQueryParameter> parameters = null;
         ruleManager.setRange(document, queryOffset, queryLength);
 
@@ -1177,9 +1180,10 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
                         String tokenText = document.get(tokenOffset, tokenLength);
                         if (ArrayUtils.containsIgnoreCase(sqlDialect.getDDLKeywords(), tokenText)) {
                             // DDL doesn't support parameters
-                            return null;
+                            ddlQuery = true;
+                        } else {
+                            execQuery = ArrayUtils.containsIgnoreCase(sqlDialect.getExecuteKeywords(), tokenText);
                         }
-                        execQuery = ArrayUtils.containsIgnoreCase(sqlDialect.getExecuteKeywords(), tokenText);
                     } catch (BadLocationException e) {
                         log.warn(e);
                     }
@@ -1189,6 +1193,9 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
             if (tokenType == SQLToken.T_PARAMETER && tokenLength > 0) {
                 try {
                     String paramName = document.get(tokenOffset, tokenLength);
+                    if (ddlQuery) {
+                        continue;
+                    }
                     if (execQuery && paramName.equals(String.valueOf(syntaxManager.getAnonymousParameterMark()))) {
                         // Skip ? parameters for stored procedures (they have special meaning? [DB2])
                         continue;
@@ -1327,6 +1334,9 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
     protected boolean scrollCursorToError(@NotNull DBRProgressMonitor monitor, @NotNull SQLQuery query, @NotNull Throwable error) {
         try {
             DBCExecutionContext context = getExecutionContext();
+            if (context == null) {
+                return false;
+            }
             boolean scrolled = false;
             DBPErrorAssistant errorAssistant = DBUtils.getAdapter(DBPErrorAssistant.class, context.getDataSource());
             if (errorAssistant != null) {
@@ -1870,4 +1880,16 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         return false;
     }
 
+    protected class ShowPreferencesAction extends Action {
+        public ShowPreferencesAction() {
+            super(SQLEditorMessages.editor_sql_preference, DBeaverIcons.getImageDescriptor(UIIcon.CONFIGURATION));
+        }  //$NON-NLS-1$
+
+        public void run() {
+            Shell shell = getSourceViewer().getTextWidget().getShell();
+            String[] preferencePages = collectContextMenuPreferencePages();
+            if (preferencePages.length > 0 && (shell == null || !shell.isDisposed()))
+                PreferencesUtil.createPreferenceDialogOn(shell, preferencePages[0], preferencePages, getEditorInput()).open();
+        }
+    }
 }

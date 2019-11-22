@@ -20,7 +20,6 @@ import org.eclipse.core.resources.*;
 import org.eclipse.core.runtime.*;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.equinox.security.storage.ISecurePreferences;
-import org.eclipse.equinox.security.storage.SecurePreferencesFactory;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
@@ -29,21 +28,21 @@ import org.jkiss.dbeaver.model.app.*;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.net.DBWNetworkProfile;
+import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableWithProgress;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
+import org.jkiss.dbeaver.model.virtual.DBVModel;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.resource.DBeaverNature;
+import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
-import org.jkiss.utils.IOUtils;
 
-import java.io.File;
-import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
@@ -72,12 +71,17 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
     private final List<DBWNetworkProfile> networkProfiles = new ArrayList<>();
     private volatile boolean saveInProgress = false;
 
+    private final DBVModel.ModelChangeListener modelChangeListener = new DBVModel.ModelChangeListener();
+    private volatile ConfigSaver configSaver;
+
     public DataSourceRegistry(DBPPlatform platform, ProjectMetadata project) {
         this.platform = platform;
         this.project = project;
 
         loadDataSources(false);
         DataSourceProviderRegistry.getInstance().fireRegistryChange(this, true);
+
+        addDataSourceListener(modelChangeListener);
     }
 
     /**
@@ -91,10 +95,13 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
                 dataSources.add(new DataSourceDescriptor(ds, this));
             }
         }
+
+        addDataSourceListener(modelChangeListener);
     }
 
     @Override
     public void dispose() {
+        removeDataSourceListener(modelChangeListener);
         DataSourceProviderRegistry.getInstance().fireRegistryChange(this, false);
         synchronized (dataSourceListeners) {
             if (!this.dataSourceListeners.isEmpty()) {
@@ -465,7 +472,11 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
 
     @Override
     public void flushConfig() {
-        this.saveDataSources();
+        // Use async config saver to avoid too frequent configuration re-save during some massive configuration update
+        if (configSaver == null) {
+            configSaver = new ConfigSaver();
+        }
+        configSaver.schedule(100);
     }
 
     @Override
@@ -521,18 +532,28 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
     @Override
     @NotNull
     public ISecurePreferences getSecurePreferences() {
-        return SecurePreferencesFactory.getDefault().node("dbeaver").node("datasources");
+        return platform.getApplication().getSecureStorage().getSecurePreferences().node("datasources");
     }
+
+    /**
+     * @return true if there is at least one project which was initialized.
+     */
+    public static boolean isProjectsInitialized() {
+        for (DBPProject project : DBWorkbench.getPlatform().getWorkspace().getProjects()) {
+            if (project.isRegistryLoaded()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 
     public static List<DBPDataSourceContainer> getAllDataSources() {
         List<DBPDataSourceContainer> result = new ArrayList<>();
         DBPWorkspace workspace = DBWorkbench.getPlatform().getWorkspace();
         for (DBPProject project : workspace.getProjects()) {
-            if (project.isOpen()) {
-                DBPDataSourceRegistry registry = project.getDataSourceRegistry();
-                if (registry != null) {
-                    result.addAll(registry.getDataSources());
-                }
+            if (project.isOpen() && project.isRegistryLoaded()) {
+                result.addAll(project.getDataSourceRegistry().getDataSources());
             }
         }
         return result;
@@ -553,7 +574,10 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
             boolean modernFormat = false;
             IFolder metadataFolder = project.getMetadataFolder(false);
             if (metadataFolder.exists()) {
-                for (IResource res : metadataFolder.members(IContainer.INCLUDE_HIDDEN)) {
+                if (refresh) {
+                    metadataFolder.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+                }
+                for (IResource res : metadataFolder.members(IContainer.INCLUDE_HIDDEN | IContainer.INCLUDE_TEAM_PRIVATE_MEMBERS)) {
                     if (res instanceof IFile && res.exists() &&
                         res.getName().startsWith(MODERN_CONFIG_FILE_PREFIX) && res.getName().endsWith(MODERN_CONFIG_FILE_EXT)) {
                         loadDataSources((IFile) res, refresh, true, parseResults);
@@ -574,6 +598,10 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
                             }
                         }
                     }
+                }
+                if (!origins.isEmpty()) {
+                    // Save config immediately in the new format
+                    flushConfig();
                 }
             }
         } catch (CoreException e) {
@@ -616,9 +644,10 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
         if (!fromFile.exists()) {
             return;
         }
-        try (InputStream is = fromFile.getContents(true)) {
+
+        try {
             DataSourceSerializer serializer = modern ? new DataSourceSerializerModern(this) : new DataSourceSerializerLegacy(this);
-            serializer.parseDataSources(is, origin, refresh, parseResults);
+            serializer.parseDataSources(fromFile, origin, refresh, parseResults);
             updateProjectNature();
         } catch (Exception ex) {
             log.error("Error loading datasource config from " + fromFile.getFullPath(), ex);
@@ -641,17 +670,21 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
                         configFile = getLegacyConfigFile();
                     }
                 } else {
-                    if ("xml".equals(configFile.getFileExtension())) {
+                    if (configFile.getName().startsWith(LEGACY_CONFIG_FILE_PREFIX) && "xml".equals(configFile.getFileExtension())) {
                         // Legacy configuration - move to metadata folder as json
-                        configFile = project.getMetadataFolder(false).getFile(configFile.getName() + ".json");
+                        String newFileName = MODERN_CONFIG_FILE_PREFIX + configFile.getName().substring(LEGACY_CONFIG_FILE_PREFIX.length());
+                        int divPos = newFileName.lastIndexOf(".");
+                        newFileName = newFileName.substring(0, divPos) + ".json";
+                        configFile = project.getMetadataFolder(false).getFile(newFileName);
                     }
                 }
                 try {
-                    File plainConfigFile = configFile.getLocation().toFile();
-                    IOUtils.makeFileBackup(plainConfigFile);
+                    ContentUtils.makeFileBackup(configFile);
 
                     if (localDataSources.isEmpty()) {
-                        configFile.delete(true, false, monitor.getNestedMonitor());
+                        if (configFile.exists()) {
+                            configFile.delete(true, false, monitor.getNestedMonitor());
+                        }
                     } else {
                         DataSourceSerializer serializer;
                         if (project.getFormat() == ProjectMetadata.ProjectFormat.LEGACY) {
@@ -659,9 +692,10 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
                         } else {
                             serializer = new DataSourceSerializerModern(this);
                         }
+                        project.getMetadataFolder(true);
                         serializer.saveDataSources(
                             monitor,
-                            origin.isDefault(),
+                            origin,
                             localDataSources,
                             configFile);
                     }
@@ -722,10 +756,6 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
         }
     }
 
-    static boolean isUseSecuredPrefStorage() {
-        return DBWorkbench.getPlatform().getSecureStorage().useSecurePreferences();
-    }
-
     /**
      * Save secure config in protected storage.
      * @return true on success (if protected storage is available and configured)
@@ -737,11 +767,11 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
         @Nullable String userName,
         @Nullable String password)
     {
-        final DBASecureStorage secureStorage = DBWorkbench.getPlatform().getSecureStorage();
+        final DBASecureStorage secureStorage = project.getSecureStorage();
         {
             try {
                 ISecurePreferences prefNode = dataSource == null ?
-                    project.getSecurePreferences() :
+                    project.getSecureStorage().getSecurePreferences() :
                     dataSource.getSecurePreferences();
                 if (!secureStorage.useSecurePreferences()) {
                     prefNode.removeNode();
@@ -755,16 +785,15 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
 
                     if (!CommonUtils.isEmpty(userName)) {
                         prefNode.put(RegistryConstants.ATTR_USER, userName, true);
-                        return true;
                     } else {
                         prefNode.remove(RegistryConstants.ATTR_USER);
                     }
                     if (!CommonUtils.isEmpty(password)) {
                         prefNode.put(RegistryConstants.ATTR_PASSWORD, password, true);
-                        return true;
                     } else {
                         prefNode.remove(RegistryConstants.ATTR_PASSWORD);
                     }
+                    return true;
                 }
             } catch (Throwable e) {
                 log.error("Can't save password in secure storage", e);
@@ -784,6 +813,11 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
     @Override
     public DBPProject getProject() {
         return project;
+    }
+
+    @Override
+    public String toString() {
+        return project.getName() + " (" + getClass().getSimpleName() + ")";
     }
 
     static class ParseResults {
@@ -820,6 +854,20 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
             } finally {
                 monitor.done();
             }
+        }
+    }
+
+    private class ConfigSaver extends AbstractJob {
+        ConfigSaver() {
+            super("Datasource configuration save");
+        }
+        @Override
+        protected IStatus run(DBRProgressMonitor monitor) {
+            synchronized (DataSourceRegistry.this) {
+                //log.debug("Save column config " + System.currentTimeMillis());
+                saveDataSources();
+            }
+            return Status.OK_STATUS;
         }
     }
 

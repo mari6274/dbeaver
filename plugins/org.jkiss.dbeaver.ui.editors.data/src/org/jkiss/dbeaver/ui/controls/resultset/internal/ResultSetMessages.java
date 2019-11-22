@@ -59,9 +59,15 @@ public class ResultSetMessages extends NLS {
 
     public static String controls_resultset_viewer_action_edit;
     public static String controls_resultset_viewer_action_order_filter;
+    public static String controls_resultset_viewer_action_order;
+    public static String controls_resultset_viewer_action_filter;
     public static String controls_resultset_viewer_action_custom_filter;
+    public static String controls_resultset_viewer_action_column_view;
+    public static String controls_resultset_viewer_action_logical_structure;
     public static String controls_resultset_viewer_action_view_format;
     public static String controls_resultset_viewer_action_view_as;
+    public static String controls_resultset_viewer_action_view_column_type;
+    public static String controls_resultset_viewer_action_view_column_types;
     public static String controls_resultset_viewer_action_data_formats;
     public static String controls_resultset_viewer_action_refresh;
     public static String controls_resultset_viewer_action_panels;
@@ -86,6 +92,7 @@ public class ResultSetMessages extends NLS {
     public static String controls_resultset_viewer_hide_columns_x;
     public static String controls_resultset_viewer_hide_columns_error_title;
     public static String controls_resultset_viewer_hide_columnss_error_text;
+    public static String controls_resultset_viewer_show_hidden_columns;
 
     public static String controls_resultset_ref_menu_no_references;
     public static String controls_resultset_ref_menu_references;
@@ -104,15 +111,13 @@ public class ResultSetMessages extends NLS {
     public static String sql_editor_resultset_filter_panel_text_enter_sql_to_filter;
     public static String sql_editor_resultset_filter_panel_text_enter_filter_not_support;
     public static String sql_editor_resultset_filter_panel_btn_apply;
-    public static String sql_editor_resultset_filter_panel_btn_remove;
-    public static String sql_editor_resultset_filter_panel_btn_save;
-    public static String sql_editor_resultset_filter_panel_btn_custom;
     public static String sql_editor_resultset_filter_panel_label;
     public static String sql_editor_resultset_filter_panel_btn_open_console;
     public static String sql_editor_resultset_filter_panel_control_no_data;
     public static String sql_editor_resultset_filter_panel_control_execute_to_see_reslut;
 
     public static String actions_name_color_by;
+    public static String actions_name_color_reset_by;
 	public static String actions_name_colorize_data_types;
 	public static String actions_name_row_colors;
 	public static String actions_name_structurize_complex_types;
@@ -239,6 +244,8 @@ public class ResultSetMessages extends NLS {
     public static String pref_page_database_resultsets_label_show_attr_filters_tip;
     public static String pref_page_database_resultsets_label_show_attr_ordering;
     public static String pref_page_database_resultsets_label_show_attr_ordering_tip;
+    public static String pref_page_database_resultsets_label_use_smooth_scrolling;
+    public static String pref_page_database_resultsets_label_use_smooth_scrolling_tip;
     public static String pref_page_database_resultsets_label_double_click_behavior;
     public static String pref_page_database_resultsets_group_plain_text;
     public static String pref_page_database_resultsets_label_value_format;

@@ -49,23 +49,25 @@ import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDDisplayFormat;
 import org.jkiss.dbeaver.model.data.DBDValueDefaultGenerator;
 import org.jkiss.dbeaver.model.data.DBDValueHandler;
+import org.jkiss.dbeaver.model.exec.DBCExecutionPurpose;
+import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
-import org.jkiss.dbeaver.tools.transfer.IDataTransferProducer;
 import org.jkiss.dbeaver.tools.transfer.database.DatabaseTransferProducer;
-import org.jkiss.dbeaver.tools.transfer.wizard.DataTransferWizard;
+import org.jkiss.dbeaver.tools.transfer.ui.wizard.DataTransferWizard;
 import org.jkiss.dbeaver.ui.IActionConstants;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.data.IValueController;
 import org.jkiss.dbeaver.ui.data.managers.BaseValueManager;
-import org.jkiss.dbeaver.ui.dialogs.ActiveWizardDialog;
 import org.jkiss.dbeaver.ui.editors.MultiPageAbstractEditor;
 import org.jkiss.dbeaver.ui.editors.TextEditorUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -101,6 +103,9 @@ public class ResultSetHandlerMain extends AbstractHandler {
     public static final String CMD_NAVIGATE_LINK = "org.jkiss.dbeaver.core.resultset.navigateLink";
     public static final String CMD_FILTER_MENU = "org.jkiss.dbeaver.core.resultset.filterMenu";
     public static final String CMD_FILTER_MENU_DISTINCT = "org.jkiss.dbeaver.core.resultset.filterMenu.distinct";
+    public static final String CMD_FILTER_EDIT_SETTINGS = "org.jkiss.dbeaver.core.resultset.filterSettings";
+    public static final String CMD_FILTER_SAVE_SETTING = "org.jkiss.dbeaver.core.resultset.filterSave";
+    public static final String CMD_FILTER_CLEAR_SETTING = "org.jkiss.dbeaver.core.resultset.filterClear";
     public static final String CMD_REFERENCES_MENU = "org.jkiss.dbeaver.core.resultset.referencesMenu";
     public static final String CMD_COPY_COLUMN_NAMES = "org.jkiss.dbeaver.core.resultset.grid.copyColumnNames";
     public static final String CMD_COPY_ROW_NAMES = "org.jkiss.dbeaver.core.resultset.grid.copyRowNames";
@@ -248,8 +253,10 @@ public class ResultSetHandlerMain extends AbstractHandler {
                         } else if (actionId.equals(CMD_CELL_SET_DEFAULT)) {
                             DBDValueHandler valueHandler = valueController.getValueHandler();
                             if (valueHandler instanceof DBDValueDefaultGenerator) {
-                                Object defValue = ((DBDValueDefaultGenerator) valueHandler).generateDefaultValue(valueController.getValueType());
-                                valueController.updateValue(defValue, false);
+                                try (DBCSession session = rsv.getExecutionContext().openSession(new VoidProgressMonitor(), DBCExecutionPurpose.UTIL, "Generate default value")) {
+                                    Object defValue = ((DBDValueDefaultGenerator) valueHandler).generateDefaultValue(session, valueController.getValueType());
+                                    valueController.updateValue(defValue, false);
+                                }
                             }
                         } else {
                             rsv.getModel().resetCellValue(attr, row);
@@ -303,8 +310,20 @@ public class ResultSetHandlerMain extends AbstractHandler {
             }
             case CMD_COPY_COLUMN_NAMES: {
                 StringBuilder buffer = new StringBuilder();
+                String columnNames = event.getParameter("columns");
+
                 IResultSetSelection selection = rsv.getSelection();
                 List<DBDAttributeBinding> attrs = selection.isEmpty() ? rsv.getModel().getVisibleAttributes() : selection.getSelectedAttributes();
+                if (!CommonUtils.isEmpty(columnNames) && attrs.size() == 1) {
+                    attrs = new ArrayList<>();
+                    for (String colName : columnNames.split(",")) {
+                        for (DBDAttributeBinding attr : rsv.getModel().getVisibleAttributes()) {
+                            if (colName.equals(attr.getName())) {
+                                attrs.add(attr);
+                            }
+                        }
+                    }
+                }
 
                 ResultSetCopySettings settings = new ResultSetCopySettings();
                 if (attrs.size() > 1) {
@@ -459,6 +478,17 @@ public class ResultSetHandlerMain extends AbstractHandler {
                 }
                 break;
             }
+            case CMD_FILTER_EDIT_SETTINGS: {
+                rsv.showFilterSettingsDialog();
+                break;
+            }
+            case CMD_FILTER_SAVE_SETTING: {
+                rsv.saveDataFilter();
+                break;
+            }
+            case CMD_FILTER_CLEAR_SETTING: {
+                rsv.resetDataFilter(true);
+            }
             case CMD_REFERENCES_MENU: {
                 boolean shiftPressed = event.getTrigger() instanceof Event && ((((Event) event.getTrigger()).stateMask & SWT.SHIFT) == SWT.SHIFT);
                 rsv.showReferencesMenu(shiftPressed);
@@ -478,17 +508,13 @@ public class ResultSetHandlerMain extends AbstractHandler {
                 options.setSelectedRows(selectedRows);
                 options.setSelectedColumns(selectedAttributes);
 
-                ResultSetDataContainer dataContainer = new ResultSetDataContainer(rsv.getDataContainer(), rsv.getModel(), options);
-                ActiveWizardDialog dialog = new ActiveWizardDialog(
+                ResultSetDataContainer dataContainer = new ResultSetDataContainer(rsv, options);
+                DataTransferWizard.openWizard(
                     HandlerUtil.getActiveWorkbenchWindow(event),
-                    new DataTransferWizard(
-                        new IDataTransferProducer[] {
-                            new DatabaseTransferProducer(dataContainer, rsv.getModel().getDataFilter())},
-                        null
-                    ),
-                    rsv.getSelection()
-                );
-                dialog.open();
+                    Collections.singletonList(
+                        new DatabaseTransferProducer(dataContainer, rsv.getModel().getDataFilter())),
+                    null,
+                    rsv.getSelection());
                 break;
             }
             case CMD_ZOOM_IN:

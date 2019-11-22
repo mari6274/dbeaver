@@ -16,17 +16,18 @@
  */
 package org.jkiss.dbeaver.tools.transfer.stream;
 
-import org.eclipse.jface.dialogs.IDialogSettings;
-import org.eclipse.jface.operation.IRunnableContext;
 import org.jkiss.dbeaver.model.data.DBDDataFormatterProfile;
+import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.tools.transfer.DTUtils;
+import org.jkiss.dbeaver.tools.transfer.DataTransferSettings;
 import org.jkiss.dbeaver.tools.transfer.IDataTransferSettings;
 import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
-import org.jkiss.dbeaver.tools.transfer.wizard.DataTransferSettings;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
+
+import java.util.Map;
 
 /**
  * Stream transfer settings
@@ -190,93 +191,59 @@ public class StreamConsumerSettings implements IDataTransferSettings {
     }
 
     @Override
-    public void loadSettings(IRunnableContext runnableContext, DataTransferSettings dataTransferSettings, IDialogSettings dialogSettings) {
-        if (!CommonUtils.isEmpty(dialogSettings.get("lobExtractType"))) {
-            try {
-                lobExtractType = LobExtractType.valueOf(dialogSettings.get("lobExtractType"));
-            } catch (IllegalArgumentException e) {
-                lobExtractType = LobExtractType.SKIP;
-            }
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("lobEncoding"))) {
-            try {
-                lobEncoding = LobEncoding.valueOf(dialogSettings.get("lobEncoding"));
-            } catch (IllegalArgumentException e) {
-                lobEncoding = LobEncoding.HEX;
-            }
+    public void loadSettings(DBRRunnableContext runnableContext, DataTransferSettings dataTransferSettings, Map<String, Object> settings) {
+        lobExtractType = CommonUtils.valueOf(LobExtractType.class, (String) settings.get("lobExtractType"), LobExtractType.SKIP);
+        lobEncoding = CommonUtils.valueOf(LobEncoding.class, (String) settings.get("lobEncoding"), LobEncoding.HEX);
+
+        outputFolder = CommonUtils.toString(settings.get("outputFolder"), outputFolder);
+        outputFilePattern = CommonUtils.toString(settings.get("outputFilePattern"), outputFilePattern);
+        outputEncoding = CommonUtils.toString(settings.get("outputEncoding"), outputEncoding);
+
+        outputEncodingBOM = CommonUtils.getBoolean(settings.get("outputEncodingBOM"), outputEncodingBOM);
+        outputClipboard = CommonUtils.getBoolean(settings.get("outputClipboard"), outputClipboard);
+        if (dataTransferSettings.getDataPipes().size() > 1) {
+            useSingleFile = CommonUtils.getBoolean(settings.get("useSingleFile"), useSingleFile);
+        } else {
+            useSingleFile = false;
         }
 
-        if (!CommonUtils.isEmpty(dialogSettings.get("outputFolder"))) {
-            outputFolder = dialogSettings.get("outputFolder");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("outputFilePattern"))) {
-            outputFilePattern = dialogSettings.get("outputFilePattern");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("outputEncoding"))) {
-            outputEncoding = dialogSettings.get("outputEncoding");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("outputEncodingBOM"))) {
-            outputEncodingBOM = dialogSettings.getBoolean("outputEncodingBOM");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("outputClipboard"))) {
-            outputClipboard = dialogSettings.getBoolean("outputClipboard");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("useSingleFile"))) {
-            if (dataTransferSettings.getDataPipes().size() > 1) {
-                useSingleFile = dialogSettings.getBoolean("useSingleFile");
-            } else {
-                useSingleFile = false;
-            }
-        }
+        compressResults = CommonUtils.getBoolean(settings.get("compressResults"), compressResults);
+        splitOutFiles = CommonUtils.getBoolean(settings.get("splitOutFiles"), splitOutFiles);
+        maxOutFileSize = CommonUtils.toLong(settings.get("maxOutFileSize"), maxOutFileSize);
+        openFolderOnFinish = CommonUtils.getBoolean(settings.get("openFolderOnFinish"), openFolderOnFinish);
+        executeProcessOnFinish = CommonUtils.getBoolean(settings.get("executeProcessOnFinish"), executeProcessOnFinish);
+        finishProcessCommand = CommonUtils.toString(settings.get("finishProcessCommand"), finishProcessCommand);
 
-        if (!CommonUtils.isEmpty(dialogSettings.get("compressResults"))) {
-            compressResults = dialogSettings.getBoolean("compressResults");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("splitOutFiles"))) {
-            splitOutFiles = dialogSettings.getBoolean("splitOutFiles");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("maxOutFileSize"))) {
-            maxOutFileSize = dialogSettings.getInt("maxOutFileSize");
-        }
-        if (dialogSettings.get("openFolderOnFinish") != null) {
-            openFolderOnFinish = dialogSettings.getBoolean("openFolderOnFinish");
-        }
-        if (dialogSettings.get("executeProcessOnFinish") != null) {
-            executeProcessOnFinish = dialogSettings.getBoolean("executeProcessOnFinish");
-        }
-        if (!CommonUtils.isEmpty(dialogSettings.get("finishProcessCommand"))) {
-            finishProcessCommand = dialogSettings.get("finishProcessCommand");
-        }
-
-        if (!CommonUtils.isEmpty(dialogSettings.get("formatterProfile"))) {
-            formatterProfile = DBWorkbench.getPlatform().getDataFormatterRegistry().getCustomProfile(dialogSettings.get("formatterProfile"));
+        String formatterProfile = CommonUtils.toString(settings.get("formatterProfile"));
+        if (!CommonUtils.isEmpty(formatterProfile)) {
+            this.formatterProfile = DBWorkbench.getPlatform().getDataFormatterRegistry().getCustomProfile(formatterProfile);
         }
     }
 
     @Override
-    public void saveSettings(IDialogSettings dialogSettings) {
-        dialogSettings.put("lobExtractType", lobExtractType.name());
-        dialogSettings.put("lobEncoding", lobEncoding.name());
+    public void saveSettings(Map<String, Object> settings) {
+        settings.put("lobExtractType", lobExtractType.name());
+        settings.put("lobEncoding", lobEncoding.name());
 
-        dialogSettings.put("outputFolder", outputFolder);
-        dialogSettings.put("outputFilePattern", outputFilePattern);
-        dialogSettings.put("outputEncoding", outputEncoding);
-        dialogSettings.put("outputEncodingBOM", outputEncodingBOM);
-        dialogSettings.put("outputClipboard", outputClipboard);
-        dialogSettings.put("useSingleFile", useSingleFile);
+        settings.put("outputFolder", outputFolder);
+        settings.put("outputFilePattern", outputFilePattern);
+        settings.put("outputEncoding", outputEncoding);
+        settings.put("outputEncodingBOM", outputEncodingBOM);
+        settings.put("outputClipboard", outputClipboard);
+        settings.put("useSingleFile", useSingleFile);
 
-        dialogSettings.put("compressResults", compressResults);
-        dialogSettings.put("splitOutFiles", splitOutFiles);
-        dialogSettings.put("maxOutFileSize", maxOutFileSize);
+        settings.put("compressResults", compressResults);
+        settings.put("splitOutFiles", splitOutFiles);
+        settings.put("maxOutFileSize", maxOutFileSize);
 
-        dialogSettings.put("openFolderOnFinish", openFolderOnFinish);
-        dialogSettings.put("executeProcessOnFinish", executeProcessOnFinish);
-        dialogSettings.put("finishProcessCommand", finishProcessCommand);
+        settings.put("openFolderOnFinish", openFolderOnFinish);
+        settings.put("executeProcessOnFinish", executeProcessOnFinish);
+        settings.put("finishProcessCommand", finishProcessCommand);
 
         if (formatterProfile != null) {
-            dialogSettings.put("formatterProfile", formatterProfile.getProfileName());
+            settings.put("formatterProfile", formatterProfile.getProfileName());
         } else {
-            dialogSettings.put("formatterProfile", "");
+            settings.put("formatterProfile", "");
         }
     }
 

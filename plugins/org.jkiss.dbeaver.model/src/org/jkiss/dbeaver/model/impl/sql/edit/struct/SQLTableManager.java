@@ -17,7 +17,10 @@
 package org.jkiss.dbeaver.model.impl.sql.edit.struct;
 
 import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.model.*;
+import org.jkiss.dbeaver.model.DBPDataSource;
+import org.jkiss.dbeaver.model.DBPNamedObject2;
+import org.jkiss.dbeaver.model.DBPScriptObject;
+import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.edit.DBERegistry;
 import org.jkiss.dbeaver.model.impl.DBObjectNameCaseTransformer;
@@ -29,12 +32,8 @@ import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDataSource;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
-import org.jkiss.dbeaver.model.struct.DBSEntityAssociation;
-import org.jkiss.dbeaver.model.struct.DBSEntityAttribute;
-import org.jkiss.dbeaver.model.struct.DBSObject;
-import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
+import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
-import org.jkiss.dbeaver.model.struct.rdb.DBSTableConstraint;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKey;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableIndex;
 import org.jkiss.dbeaver.utils.GeneralUtils;
@@ -45,15 +44,12 @@ import java.util.*;
 /**
  * JDBC table manager
  */
-public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TYPE extends DBSObjectContainer>
+public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_TYPE extends DBSObjectContainer>
     extends SQLStructEditor<OBJECT_TYPE, CONTAINER_TYPE>
 {
 
     protected static final String BASE_TABLE_NAME = "NewTable"; //$NON-NLS-1$
     protected static final String BASE_VIEW_NAME = "NewView"; //$NON-NLS-1$
-
-    public static final String OPTION_DDL_SKIP_FOREIGN_KEYS = "ddl.skipForeignKeys"; //$NON-NLS-1$
-    public static final String OPTION_DDL_ONLY_FOREIGN_KEYS = "ddl.onlyForeignKeys"; //$NON-NLS-1$
 
     @Override
     public long getMakerOptions(DBPDataSource dataSource)
@@ -91,8 +87,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
             log.warn("Object change command not found"); //$NON-NLS-1$
             return;
         }
-        final String tableName = CommonUtils.getOption(options, DBPScriptObject.OPTION_FULLY_QUALIFIED_NAMES, true) ?
-            table.getFullyQualifiedName(DBPEvaluationContext.DDL) : DBUtils.getQuotedIdentifier(table);
+        final String tableName = DBUtils.getEntityScriptName(table, options);
 
         final String slComment = SQLUtils.getDialectFromObject(table).getSingleLineComments()[0];
         final String lineSeparator = GeneralUtils.getDefaultLineSeparator();
@@ -149,7 +144,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
     }
 
     protected String getCreateTableType(OBJECT_TYPE table) {
-        return table.isView() ? "VIEW" : "TABLE";
+        return DBUtils.isView(table) ? "VIEW" : "TABLE";
     }
 
     protected boolean excludeFromDDL(NestedObjectCommand command, Collection<NestedObjectCommand> orderedCommands) {
@@ -160,14 +155,13 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
     protected void addObjectDeleteActions(List<DBEPersistAction> actions, ObjectDeleteCommand command, Map<String, Object> options)
     {
         OBJECT_TYPE object = command.getObject();
-        final String tableName = CommonUtils.getOption(options, DBPScriptObject.OPTION_FULLY_QUALIFIED_NAMES, true) ?
-            object.getFullyQualifiedName(DBPEvaluationContext.DDL) : DBUtils.getQuotedIdentifier(object);
+        final String tableName = DBUtils.getEntityScriptName(object, options);
         actions.add(
             new SQLDatabasePersistAction(
                 ModelMessages.model_jdbc_drop_table,
                 "DROP " + getCreateTableType(object) +  //$NON-NLS-2$
                 " " + tableName + //$NON-NLS-2$
-                (!object.isView() && CommonUtils.getOption(options, OPTION_DELETE_CASCADE) ? " CASCADE" : "") //$NON-NLS-2$
+                (!DBUtils.isView(object) && CommonUtils.getOption(options, OPTION_DELETE_CASCADE) ? " CASCADE" : "") //$NON-NLS-2$
             )
         );
     }
@@ -203,11 +197,11 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
 
         final DBERegistry editorsRegistry = table.getDataSource().getContainer().getPlatform().getEditorsRegistry();
         SQLObjectEditor<DBSEntityAttribute, OBJECT_TYPE> tcm = getObjectEditor(editorsRegistry, DBSEntityAttribute.class);
-        SQLObjectEditor<DBSTableConstraint, OBJECT_TYPE> pkm = getObjectEditor(editorsRegistry, DBSTableConstraint.class);
+        SQLObjectEditor<DBSEntityConstraint, OBJECT_TYPE> pkm = getObjectEditor(editorsRegistry, DBSEntityConstraint.class);
         SQLObjectEditor<DBSTableForeignKey, OBJECT_TYPE> fkm = getObjectEditor(editorsRegistry, DBSTableForeignKey.class);
         SQLObjectEditor<DBSTableIndex, OBJECT_TYPE> im = getObjectEditor(editorsRegistry, DBSTableIndex.class);
 
-        if (CommonUtils.getOption(options, OPTION_DDL_ONLY_FOREIGN_KEYS)) {
+        if (CommonUtils.getOption(options, DBPScriptObject.OPTION_DDL_ONLY_FOREIGN_KEYS)) {
             if (fkm != null) {
                 // Create only foreign keys
                 try {
@@ -258,7 +252,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
         }
         if (pkm != null) {
             try {
-                for (DBSTableConstraint constraint : CommonUtils.safeCollection(table.getConstraints(monitor))) {
+                for (DBSEntityConstraint constraint : CommonUtils.safeCollection(table.getConstraints(monitor))) {
                     if (DBUtils.isHiddenObject(constraint) || DBUtils.isInheritedObject(constraint)) {
                         continue;
                     }
@@ -269,7 +263,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
                 log.debug(e);
             }
         }
-        if (fkm != null && !CommonUtils.getOption(options, OPTION_DDL_SKIP_FOREIGN_KEYS)) {
+        if (fkm != null && !CommonUtils.getOption(options, DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS)) {
             try {
                 for (DBSEntityAssociation foreignKey : CommonUtils.safeCollection(table.getAssociations(monitor))) {
                     if (!(foreignKey instanceof DBSTableForeignKey) ||
@@ -285,9 +279,9 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
                 log.debug(e);
             }
         }
-        if (im != null) {
+        if (im != null && table instanceof DBSTable) {
             try {
-                for (DBSTableIndex index : CommonUtils.safeCollection(table.getIndexes(monitor))) {
+                for (DBSTableIndex index : CommonUtils.safeCollection(((DBSTable)table).getIndexes(monitor))) {
                     if (!isIncludeIndexInDDL(index)) {
                         continue;
                     }
@@ -301,7 +295,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSTable, CONTAINER_TY
         addExtraDDLCommands(monitor, table, options, command);
         Collections.addAll(actions, command.getPersistActions(monitor, options));
 
-        return actions.toArray(new DBEPersistAction[actions.size()]);
+        return actions.toArray(new DBEPersistAction[0]);
     }
 
     protected void addExtraDDLCommands(DBRProgressMonitor monitor, OBJECT_TYPE table, Map<String, Object> options, StructCreateCommand createCommand) {

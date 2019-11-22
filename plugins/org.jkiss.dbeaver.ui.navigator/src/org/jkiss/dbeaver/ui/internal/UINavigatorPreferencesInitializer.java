@@ -17,11 +17,9 @@
 package org.jkiss.dbeaver.ui.internal;
 
 import org.eclipse.core.runtime.preferences.AbstractPreferenceInitializer;
-import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.navigator.NavigatorPreferences;
-import org.jkiss.dbeaver.ui.navigator.database.NavigatorViewBase;
 import org.jkiss.dbeaver.utils.PrefUtils;
 
 /**
@@ -40,14 +38,16 @@ public class UINavigatorPreferencesInitializer extends AbstractPreferenceInitial
 
         // Navigator
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_EXPAND_ON_CONNECT, false);
+        PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_RESTORE_STATE_DEPTH, 0);
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_COLOR_ALL_NODES, false);
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_SYNC_EDITOR_DATASOURCE, false);
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_REFRESH_EDITORS_ON_OPEN, false);
 
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_GROUP_BY_DRIVER, false);
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_EDITOR_SHOW_TABLE_GRID, true);
-        PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_OBJECT_DOUBLE_CLICK, NavigatorViewBase.DoubleClickBehavior.EDIT.name());
-        PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_CONNECTION_DOUBLE_CLICK, NavigatorViewBase.DoubleClickBehavior.EXPAND.name());
+        PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_OBJECT_DOUBLE_CLICK, NavigatorPreferences.DoubleClickBehavior.EDIT.name());
+        PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_CONNECTION_DOUBLE_CLICK, NavigatorPreferences.DoubleClickBehavior.EXPAND.name());
+        PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_DEFAULT_EDITOR_PAGE, "");
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_SHOW_SQL_PREVIEW, true);
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_SHOW_OBJECT_TIPS, true);
         PrefUtils.setDefaultPreferenceValue(store, NavigatorPreferences.NAVIGATOR_LONG_LIST_FETCH_SIZE, 5000);

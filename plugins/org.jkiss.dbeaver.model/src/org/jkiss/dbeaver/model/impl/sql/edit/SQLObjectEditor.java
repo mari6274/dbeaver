@@ -22,7 +22,6 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.edit.*;
 import org.jkiss.dbeaver.model.edit.prop.*;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.ProxyPropertyDescriptor;
 import org.jkiss.dbeaver.model.impl.edit.AbstractObjectManager;
 import org.jkiss.dbeaver.model.impl.edit.DBECommandAbstract;
@@ -30,10 +29,12 @@ import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,6 +46,8 @@ public abstract class SQLObjectEditor<OBJECT_TYPE extends DBSObject, CONTAINER_T
         implements
         DBEObjectEditor<OBJECT_TYPE>,
         DBEObjectMaker<OBJECT_TYPE, CONTAINER_TYPE> {
+
+    public static final String OPTION_SKIP_CONFIGURATION = "skip.object.configuration";
 
     public static final String PATTERN_ITEM_INDEX = "%INDEX%"; //$NON-NLS-1$
     public static final String PATTERN_ITEM_TABLE = "%TABLE%"; //$NON-NLS-1$
@@ -82,9 +85,11 @@ public abstract class SQLObjectEditor<OBJECT_TYPE extends DBSObject, CONTAINER_T
         } catch (ClassCastException e) {
             throw new IllegalArgumentException("Can't create object here.\nWrong container type: " + container.getClass().getSimpleName());
         }
-        newObject = configureObject(monitor, container, newObject);
-        if (newObject == null) {
-            return null;
+        if (!CommonUtils.getOption(options, OPTION_SKIP_CONFIGURATION)) {
+            newObject = configureObject(monitor, container, newObject);
+            if (newObject == null) {
+                return null;
+            }
         }
 
         final ObjectCreateCommand createCommand = makeCreateCommand(newObject, options);
@@ -157,8 +162,7 @@ public abstract class SQLObjectEditor<OBJECT_TYPE extends DBSObject, CONTAINER_T
 
     }
 
-    protected void validateObjectProperties(ObjectChangeCommand command, Map<String, Object> options)
-            throws DBException {
+    protected void validateObjectProperties(ObjectChangeCommand command, Map<String, Object> options) throws DBException {
 
     }
 
@@ -334,7 +338,7 @@ public abstract class SQLObjectEditor<OBJECT_TYPE extends DBSObject, CONTAINER_T
         }
     }
 
-    protected class ObjectRenameCommand extends DBECommandAbstract<OBJECT_TYPE> {
+    protected class ObjectRenameCommand extends DBECommandAbstract<OBJECT_TYPE> implements DBECommandRename {
         private String oldName;
         private String newName;
 
@@ -381,7 +385,18 @@ public abstract class SQLObjectEditor<OBJECT_TYPE extends DBSObject, CONTAINER_T
         public void redoCommand(ObjectRenameCommand command) {
             if (command.getObject() instanceof DBPNamedObject2) {
                 ((DBPNamedObject2) command.getObject()).setName(command.newName);
-                DBUtils.fireObjectUpdate(command.getObject());
+
+                // Update cache
+                DBSObjectCache<? extends DBSObject, OBJECT_TYPE> cache = getObjectsCache(command.getObject());
+                if (cache != null) {
+                    cache.renameObject(command.getObject(), command.getOldName(), command.getNewName());
+                }
+
+                Map<String, Object> options = new LinkedHashMap<>();
+                options.put(DBEObjectRenamer.PROP_OLD_NAME, command.getOldName());
+                options.put(DBEObjectRenamer.PROP_NEW_NAME, command.getNewName());
+
+                DBUtils.fireObjectUpdate(command.getObject(), options, null);
             }
         }
 
@@ -389,6 +404,13 @@ public abstract class SQLObjectEditor<OBJECT_TYPE extends DBSObject, CONTAINER_T
         public void undoCommand(ObjectRenameCommand command) {
             if (command.getObject() instanceof DBPNamedObject2) {
                 ((DBPNamedObject2) command.getObject()).setName(command.oldName);
+
+                // Update cache
+                DBSObjectCache<? extends DBSObject, OBJECT_TYPE> cache = getObjectsCache(command.getObject());
+                if (cache != null) {
+                    cache.renameObject(command.getObject(), command.getNewName(), command.getOldName());
+                }
+
                 DBUtils.fireObjectUpdate(command.getObject());
             }
         }

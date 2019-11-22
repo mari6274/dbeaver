@@ -1,6 +1,6 @@
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/dbeaver_news.svg?style=social&label=Follow%20%40dbeaver_news)](https://twitter.com/dbeaver_news)
 [![Build Status](https://travis-ci.org/dbeaver/dbeaver.svg?branch=devel)](https://travis-ci.org/dbeaver/dbeaver)
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/93fcfdba7805406298b2e60c9d56f50e)](https://www.codacy.com/app/serge/dbeaver?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=dbeaver/dbeaver&amp;utm_campaign=Badge_Grade)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/70fbe55885864aa38d246b8180f5916a)](https://www.codacy.com/manual/serge/dbeaver?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=dbeaver/dbeaver&amp;utm_campaign=Badge_Grade)
 [![Apache 2.0](https://img.shields.io/github/license/cronn-de/jira-sync.svg)](http://www.apache.org/licenses/LICENSE-2.0)
 <!--[![paypal](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=KFGAGZ24YZE3C)-->
 
@@ -64,13 +64,12 @@ Binaries are in `product/standalone/target/products`
 
 ## Contribution: help the Beaver!
 
-Hooray, we have reached 7k of stars on GitHub and continue to grow!
+Hooray, we have reached 10k of stars on GitHub and continue to grow!
 That's really cool, we are glad that you like DBeaver.
 
 - We are actively looking for new source code contributors. We have added labels “Good first issue” and “Help wanted” to some tickets. If you want to be a part of our development team just be brave and take a ticket.
 - You can buy <a href="https://dbeaver.com/download">DBeaver EE</a> version. It includes all features of CE + NoSQL databases support + EE extensions + official online support. Also, licensed users have priorities in bug fixes and new features development.
 
-Save wild animals :) Thank you!  
+Thank you!  
 
 - <a href="https://github.com/dbeaver/dbeaver/graphs/contributors">DBeaver Team</a> (contributors)
-- <a href="https://github.com/serge-rider/">Serge Rider</a>  (author and maintainer)

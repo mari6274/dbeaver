@@ -165,9 +165,16 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
                 }
             } else if (object instanceof QMMSessionInfo) {
                 String containerName = ((QMMSessionInfo) object).getContainerName();
+                String instanceId = ((QMMSessionInfo) object).getInstanceId();
+                String contextName = ((QMMSessionInfo) object).getContextName();
+                String containerFullName = containerName;
+                if (!CommonUtils.equalObjects(containerName, instanceId)) {
+                    containerFullName += " <" + instanceId + ">";
+                }
+                //containerFullName += " {" + contextName + "}";
                 switch (event.getAction()) {
-                    case BEGIN: return SQLEditorMessages.controls_querylog_connected_to + containerName + "\""; //$NON-NLS-1$
-                    case END:   return SQLEditorMessages.controls_querylog_disconnected_from + containerName + "\""; //$NON-NLS-1$
+                    case BEGIN: return SQLEditorMessages.controls_querylog_connected_to + containerFullName + "\""; //$NON-NLS-1$
+                    case END:   return SQLEditorMessages.controls_querylog_disconnected_from + containerFullName + "\""; //$NON-NLS-1$
                     default:    return "?"; //$NON-NLS-1$
                 }
             }
@@ -221,11 +228,16 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
             if (object instanceof QMMStatementExecuteInfo) {
                 QMMStatementExecuteInfo exec = (QMMStatementExecuteInfo) object;
                 if (exec.isClosed() && !exec.isFetching()) {
-                    long rowCount = exec.getRowCount();
-                    if (rowCount < 0) {
+                    long updateRowCount = exec.getUpdateRowCount();
+                    long fetchRowCount = exec.getFetchRowCount();
+                    if (updateRowCount < 0 && fetchRowCount <= 0) {
                         return ""; //$NON-NLS-1$
+                    } else if (updateRowCount < 0) {
+                        return String.valueOf(fetchRowCount);
+                    } else if (fetchRowCount <= 0) {
+                        return String.valueOf(updateRowCount);
                     } else {
-                        return String.valueOf(rowCount);
+                        return fetchRowCount + "/" + updateRowCount;
                     }
                 }
             }
@@ -1181,7 +1193,7 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
     }
 
     private class EvenHistoryReadVisualizer extends ProgressLoaderVisualizer<List<QMMetaEvent>> {
-        public EvenHistoryReadVisualizer(EventHistoryReadService loadingService) {
+        EvenHistoryReadVisualizer(EventHistoryReadService loadingService) {
             super(loadingService, logTable);
         }
 
@@ -1199,6 +1211,20 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
                 if (result != null) {
                     updateMetaInfo(result);
                 }
+                // Apply sort (if any)
+                TableColumn sortColumn = logTable.getSortColumn();
+                if (sortColumn != null) {
+                    Listener[] sortListeners = sortColumn.getListeners(SWT.Selection);
+                    if (sortListeners != null) {
+                        for (Listener listener : sortListeners) {
+                            Event event = new Event();
+                            event.widget = sortColumn;
+                            event.doit = false; // Disable sort toggle
+                            listener.handleEvent(event);
+                        }
+                    }
+                }
+
             } finally {
                 reloadInProgress = false;
             }

@@ -27,7 +27,6 @@ import org.jkiss.dbeaver.model.impl.AbstractDescriptor;
 import org.jkiss.dbeaver.model.impl.PropertyDescriptor;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
 import org.jkiss.dbeaver.tools.transfer.IDataTransferProcessor;
-import org.jkiss.dbeaver.ui.ProgramInfo;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -49,11 +48,9 @@ public class DataTransferProcessorDescriptor extends AbstractDescriptor implemen
     private final int order;
     @NotNull
     private final DBPImage icon;
-    private final List<DBPPropertyDescriptor> properties = new ArrayList<>();
+    private final DBPPropertyDescriptor[] properties;
     private boolean isBinary;
     private boolean isHTML;
-
-    private transient ProgramInfo program;
 
     DataTransferProcessorDescriptor(DataTransferNodeDescriptor node, IConfigurationElement config) {
         super(config);
@@ -73,9 +70,11 @@ public class DataTransferProcessorDescriptor extends AbstractDescriptor implemen
             sourceTypes.add(new ObjectType(typeCfg.getAttribute("type")));
         }
 
+        List<DBPPropertyDescriptor> props = new ArrayList<>();
         for (IConfigurationElement prop : ArrayUtils.safeArray(config.getChildren(PropertyDescriptor.TAG_PROPERTY_GROUP))) {
-            properties.addAll(PropertyDescriptor.extractProperties(prop));
+            props.addAll(PropertyDescriptor.extractProperties(prop));
         }
+        this.properties = props.toArray(new DBPPropertyDescriptor[0]);
     }
 
     public String getId() {
@@ -98,15 +97,6 @@ public class DataTransferProcessorDescriptor extends AbstractDescriptor implemen
         return appName;
     }
 
-    public ProgramInfo getOpenWithApplication() {
-        if (program == null) {
-            if (!CommonUtils.isEmpty(appFileExtension)) {
-                program = ProgramInfo.getProgram(appFileExtension);
-            }
-        }
-        return program;
-    }
-
     public int getOrder() {
         return order;
     }
@@ -116,7 +106,7 @@ public class DataTransferProcessorDescriptor extends AbstractDescriptor implemen
         return icon;
     }
 
-    public List<DBPPropertyDescriptor> getProperties() {
+    public DBPPropertyDescriptor[] getProperties() {
         return properties;
     }
 

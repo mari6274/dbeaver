@@ -127,7 +127,7 @@ public class PostgreServerCockroachDB extends PostgreServerExtensionBase {
     }
 
     @Override
-    public boolean isSupportsLimits() {
+    public boolean supportsResultSetLimits() {
         return false;
     }
 
@@ -148,6 +148,11 @@ public class PostgreServerCockroachDB extends PostgreServerExtensionBase {
 
     @Override
     public boolean supportsExplainPlanVerbose() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsTeblespaceLocation() {
         return false;
     }
 

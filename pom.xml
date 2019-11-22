@@ -9,19 +9,19 @@
     <packaging>pom</packaging>
 
     <properties>
-        <dbeaver-version>6.1.4</dbeaver-version>
+        <dbeaver-version>6.3.0</dbeaver-version>
         <dbeaver-product>DBeaver</dbeaver-product>
-        <tycho-version>1.1.0</tycho-version>
-        <tycho-versions-version>0.26.0</tycho-versions-version>
+        <tycho-version>1.4.0</tycho-version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyyMMddHHmm</maven.build.timestamp.format>
 
-        <!-- SimRel 2019-03 -->
-        <eclipse-p2-repo.url>http://download.eclipse.org/releases/2019-03/</eclipse-p2-repo.url>
-        <!-- Orbit. From Photon because we need com.ibm.icu.base -->
-        <orbit-p2-repo.url>http://download.eclipse.org/tools/orbit/downloads/drops/R20180330011457/repository</orbit-p2-repo.url>
+        <!-- Eclipse release -->
+        <eclipse-p2-repo.url>http://download.eclipse.org/releases/2019-12</eclipse-p2-repo.url>
         <!-- DBeaver Maven dependencies (see product/localRepository for details) -->
         <local-p2-repo.url>https://dbeaver.io/eclipse-repo</local-p2-repo.url>
+
+        <!-- Orbit. From Photon because we need com.ibm.icu.base -->
+        <!-- <orbit-p2-repo.url>http://download.eclipse.org/tools/orbit/downloads/drops/R20180330011457/repository</orbit-p2-repo.url> -->
 
         <key.storage.path>/etc/</key.storage.path>
         <tsa/>
@@ -33,6 +33,7 @@
         <module>features</module>
 
         <!-- Products -->
+        <module>product/appstore</module>
         <module>product/standalone</module>
         <module>product/repositories</module>
 
@@ -45,11 +46,6 @@
         <repository>
             <id>eclipse-p2-repo</id>
             <url>${eclipse-p2-repo.url}</url>
-            <layout>p2</layout>
-        </repository>
-        <repository>
-            <id>eclipse-orbit-repo</id>
-            <url>${orbit-p2-repo.url}</url>
             <layout>p2</layout>
         </repository>
         <repository>
@@ -245,12 +241,17 @@
         <profile>
             <id>eclipse-oxygen</id>
             <activation>
-                <activeByDefault>false</activeByDefault>
+                <property><name>legacy</name></property>
             </activation>
             <properties>
                 <!-- Use Oxygen repo -->
                 <eclipse-p2-repo.url>http://download.eclipse.org/releases/oxygen/</eclipse-p2-repo.url>
             </properties>
+        </profile>
+        <!-- eclipse-modern must be enabled by default -->
+        <profile>
+            <id>eclipse-modern</id>
+            <activation><property><name>!legacy</name></property></activation>
         </profile>
 
         <!--
@@ -263,6 +264,16 @@
             <activation>
                 <activeByDefault>false</activeByDefault>
             </activation>
+
+            <repositories>
+                <!-- Use Orbit because old Eclipse doesn't have many bundles -->
+                <!--<repository>
+                    <id>eclipse-orbit-repo</id>
+                    <url>${orbit-p2-repo.url}</url>
+                    <layout>p2</layout>
+                </repository>-->
+            </repositories>
+
             <build>
                 <plugins>
                     <plugin>

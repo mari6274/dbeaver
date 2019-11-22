@@ -17,24 +17,31 @@
 package org.jkiss.dbeaver.runtime.ui.console;
 
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
+import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
-import org.jkiss.dbeaver.model.connection.DBPAuthInfo;
 import org.jkiss.dbeaver.model.access.DBAPasswordChangeInfo;
+import org.jkiss.dbeaver.model.connection.DBPAuthInfo;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverDependencies;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
-import org.jkiss.dbeaver.model.runtime.DBRProcessDescriptor;
+import org.jkiss.dbeaver.model.runtime.*;
 import org.jkiss.dbeaver.model.runtime.load.ILoadService;
 import org.jkiss.dbeaver.model.runtime.load.ILoadVisualizer;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.DBPPlatformUI;
+import org.jkiss.dbeaver.utils.GeneralUtils;
+
+import java.lang.reflect.InvocationTargetException;
 
 public class ConsoleUserInterface implements DBPPlatformUI {
+    private static final Log log = Log.getLog(ConsoleUserInterface.class);
+
     @Override
     public UserResponse showError(@NotNull String title, @Nullable String message, @NotNull IStatus status) {
         System.out.println(title + (message == null ? "" : ": " + message));
@@ -120,12 +127,12 @@ public class ConsoleUserInterface implements DBPPlatformUI {
 
     @Override
     public void openEntityEditor(@NotNull DBSObject object) {
-        throw new IllegalStateException("Editors not supported in console mode");
+        // do nothing
     }
 
     @Override
     public void openEntityEditor(@NotNull DBNNode selectedNode, String defaultPageId) {
-        throw new IllegalStateException("Editors not supported in console mode");
+        // do nothing
     }
 
     @Override
@@ -143,18 +150,50 @@ public class ConsoleUserInterface implements DBPPlatformUI {
     }
 
     @Override
-    public void executeInUI(@NotNull Runnable runnable) {
+    public void executeWithProgress(@NotNull Runnable runnable) {
         runnable.run();
+    }
+
+    @Override
+    public void executeWithProgress(@NotNull DBRRunnableWithProgress runnable) throws InvocationTargetException, InterruptedException {
+        runnable.run(new LoggingProgressMonitor());
     }
 
     @NotNull
     @Override
     public <RESULT> Job createLoadingService(ILoadService<RESULT> loadingService, ILoadVisualizer<RESULT> visualizer) {
-        throw new IllegalStateException("Loading jobs not supported in console mode");
+        return new AbstractJob(loadingService.getServiceName()) {
+            @Override
+            protected IStatus run(DBRProgressMonitor monitor) {
+                try {
+                    RESULT result = loadingService.evaluate(monitor);
+                    visualizer.completeLoading(result);
+                    return Status.OK_STATUS;
+                } catch (InvocationTargetException e) {
+                    return GeneralUtils.makeExceptionStatus(e.getTargetException());
+                } catch (InterruptedException e) {
+                    return Status.CANCEL_STATUS;
+                }
+            }
+        };
     }
 
     @Override
     public void refreshPartState(Object part) {
         // do nothing
+    }
+
+    @Override
+    public void copyTextToClipboard(String text, boolean htmlFormat) {
+        // do nothing
+    }
+
+    @Override
+    public void executeShellProgram(String shellCommand) {
+        try {
+            Runtime.getRuntime().exec(shellCommand);
+        } catch (Exception e) {
+            log.error(e);
+        }
     }
 }

@@ -37,7 +37,7 @@ import java.util.Map;
 public class MapAttributeTransformer implements DBDAttributeTransformer {
 
     @Override
-    public void transformAttribute(@NotNull DBCSession session, @NotNull DBDAttributeBinding attribute, @NotNull List<Object[]> rows, @NotNull Map<String, String> options) throws DBException {
+    public void transformAttribute(@NotNull DBCSession session, @NotNull DBDAttributeBinding attribute, @NotNull List<Object[]> rows, @NotNull Map<String, Object> options) throws DBException {
         if (!CommonUtils.isEmpty(attribute.getNestedBindings()) ||
             !session.getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.RESULT_TRANSFORM_COMPLEX_TYPES)) {
             return;
@@ -89,11 +89,11 @@ public class MapAttributeTransformer implements DBDAttributeTransformer {
             }
         }
         if (valueAttributes != null && !valueAttributes.isEmpty()) {
-            createNestedMapBindings(session, attribute, valueAttributes);
+            createNestedMapBindings(session, attribute, valueAttributes, rows);
         }
     }
 
-    private static void createNestedMapBindings(DBCSession session, DBDAttributeBinding topAttribute, List<Pair<DBSAttributeBase, Object[]>> nestedAttributes) throws DBException {
+    private static void createNestedMapBindings(DBCSession session, DBDAttributeBinding topAttribute, List<Pair<DBSAttributeBase, Object[]>> nestedAttributes, List<Object[]> rows) throws DBException {
         int maxPosition = 0;
         for (Pair<DBSAttributeBase, Object[]> attr : nestedAttributes) {
             maxPosition = Math.max(maxPosition, attr.getFirst().getOrdinalPosition());
@@ -130,9 +130,9 @@ public class MapAttributeTransformer implements DBDAttributeTransformer {
                         continue;
                     }
                     fakeRow[nestedBinding.getOrdinalPosition()] = values[i];
-                    nestedBinding.lateBinding(session, fakeRows);
                 }
             }
+            nestedBinding.lateBinding(session, fakeRows);
         }
 
         if (!nestedBindings.isEmpty()) {

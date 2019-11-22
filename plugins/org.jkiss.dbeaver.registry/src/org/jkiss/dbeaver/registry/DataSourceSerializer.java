@@ -21,7 +21,6 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -31,13 +30,13 @@ interface DataSourceSerializer
 {
     void saveDataSources(
         DBRProgressMonitor monitor,
-        boolean primaryConfig,
+        DataSourceOrigin origin,
         List<DataSourceDescriptor> localDataSources,
         IFile configFile)
         throws DBException, IOException;
 
     void parseDataSources(
-        InputStream is,
+        IFile configFile,
         DataSourceOrigin origin,
         boolean refresh,
         DataSourceRegistry.ParseResults parseResults)

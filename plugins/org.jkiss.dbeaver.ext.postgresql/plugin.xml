@@ -21,14 +21,53 @@
 <plugin>
 
     <extension-point id="org.jkiss.dbeaver.postgresql.serverType" name="PostgreSQL Server Type" schema="schema/org.jkiss.dbeaver.postgresql.serverType.exsd"/>
+    <extension-point id="org.jkiss.dbeaver.postgresql.fdw.config" name="PostgreSQL Foreign Data Wrappers Config" schema="schema/org.jkiss.dbeaver.postgresql.fdw.config.exsd"/>
 
     <extension point="org.jkiss.dbeaver.postgresql.serverType">
-        <serverType id="postgresql" name="PostgreSQL" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerPostgreSQL" logo="icons/postgresql_logo.png"/>
+        <serverType id="postgresql" name="PostgreSQL" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerPostgreSQL" logo="icons/postgresql_logo.png" customURL="true"/>
         <serverType id="edb" name="EnterpriseDB" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerEdb" logo="icons/edb_logo.png" customURL="true"/>
         <serverType id="redshift" name="Redshift" class="org.jkiss.dbeaver.ext.postgresql.model.impls.redshift.PostgreServerRedshift" logo="icons/redshift_logo.png" defaultDatbase="dev" defaultUser="awsuser" customURL="true"/>
-        <serverType id="timescale" name="TimescaleDB" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerTimescale" logo="icons/timescale_logo.png"/>
-        <serverType id="yellowbrick" name="Yellowbrick" class="org.jkiss.dbeaver.ext.postgresql.model.impls.yellowbrick.PostgreServerYellowBrick" logo="icons/yellowbrick_logo.png"/>
-        <serverType id="cockroach" name="CockroachDB" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerCockroachDB" logo="icons/cockroach_logo.png" defaultDatbase="system" defaultUser="root"/>
+        <serverType id="timescale" name="TimescaleDB" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerTimescale" logo="icons/timescale_logo.png" customURL="true"/>
+        <serverType id="yellowbrick" name="Yellowbrick" class="org.jkiss.dbeaver.ext.postgresql.model.impls.yellowbrick.PostgreServerYellowBrick" logo="icons/yellowbrick_logo.png" customURL="true"/>
+        <serverType id="cockroach" name="CockroachDB" class="org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerCockroachDB" logo="icons/cockroach_logo.png" defaultDatbase="system" defaultUser="root" customURL="true"/>
+    </extension>
+
+    <extension point="org.jkiss.dbeaver.postgresql.fdw.config">
+        <fdw id="postgresql" fdwId="postgres_fdw" databases="postgres" name="PostgreSQL" description="Default FDW for PostgreSQL servers" docURL="https://www.postgresql.org/docs/current/postgres-fdw.html">
+            <propertyGroup label="Options">
+                <property id="host" description="Host name" defaultValue="${host}"/>
+                <property id="port" description="Port number" defaultValue="${port}"/>
+                <property id="dbname" description="Database name" defaultValue="${database}"/>
+            </propertyGroup>
+        </fdw>
+        <fdw id="clickhouse" fdwId="clickhousedb_fdw" databases="clickhouse" name="Yandex Clickhouse" description="Clickhouse FDW by Percona Labs" docURL="https://github.com/Percona-Lab/clickhousedb_fdw">
+            <propertyGroup label="Options">
+                <property id="host" description="Host name" defaultValue="${host}"/>
+                <property id="port" description="Port number" defaultValue="${port}"/>
+                <property id="dbname" description="Database name" defaultValue="${database}"/>
+            </propertyGroup>
+        </fdw>
+        <fdw id="mysql" fdwId="mysql_fdw" databases="mysql" name="MySQL" description="MySQL FDW by EnterpriseDB" docURL="https://github.com/EnterpriseDB/mysql_fdw">
+            <propertyGroup label="Options">
+                <property id="host" description="Host name" defaultValue="${host}"/>
+                <property id="port" description="Port number" defaultValue="${port}"/>
+                <property id="dbname" description="Database name" defaultValue="${database}"/>
+                <property id="username" description="User name" defaultValue="${user}"/>
+                <property id="password" description="User password" defaultValue="${password}"/>
+            </propertyGroup>
+        </fdw>
+        <fdw id="oracle" fdwId="oracle_fdw" databases="oracle" name="Oracle" description="Oracle FDW" docURL="https://github.com/laurenz/oracle_fdw">
+            <propertyGroup label="Options">
+                <property id="dbserver" description="Database connection string" defaultValue="//${host}:${port}/${database}"/>
+                <property id="user" description="User name" defaultValue="${user}"/>
+                <property id="password" description="User password" defaultValue="${password}"/>
+            </propertyGroup>
+        </fdw>
+        <fdw id="odbc" fdwId="odbc_fdw" databases="odbc" name="ODBC" description="ODBC FDW by CartoDB" docURL="https://github.com/CartoDB/odbc_fdw">
+            <propertyGroup label="Options">
+                <property id="dsn" description="DSN" defaultValue="${database}"/>
+            </propertyGroup>
+        </fdw>
     </extension>
 
     <!--
@@ -84,7 +123,7 @@
                                             </items>
                                         </items>
                                     </folder>
-                                    <folder type="org.jkiss.dbeaver.ext.postgresql.model.PostgreTablePartition" label="%tree.partitions.node.name" icon="#folder_table" description="%tree.partitions.node.tip" virtual="true" visibleIf="object.dataSource.serverType.supportsPartitions() &amp;&amp; !object.isPartition()">
+                                    <folder type="org.jkiss.dbeaver.ext.postgresql.model.PostgreTablePartition" label="%tree.partitions.node.name" icon="#folder_table" description="%tree.partitions.node.tip" virtual="true" visibleIf="object.dataSource.serverType.supportsPartitions()">
                                         <items label="%tree.partitions.node.name" path="partition" property="partitions" icon="#partition" virtual="true" recursive="../..">
                                         </items>
                                     </folder>
@@ -234,7 +273,7 @@
                     iconBig="icons/postgresql_icon_big.png"
                     class="org.postgresql.Driver"
                     sampleURL="jdbc:postgresql://{host}[:{port}]/[{database}]"
-                    useURL="false"
+                    useURL="true"
                     defaultPort="5432"
                     webURL="http://jdbc.postgresql.org/"
                     propertiesURL="https://jdbc.postgresql.org/documentation/head/connect.html#connection-parameters"
@@ -242,6 +281,7 @@
                     promoted="1"
                     categories="sql">
                     <replace provider="generic" driver="postgresql"/>
+                    <replace provider="postgresql" driver="postgresql"/>
                     <file type="jar" path="maven:/org.postgresql:postgresql:RELEASE[42.2.5]" bundle="!drivers.postgresql"/>
                     <file type="jar" path="maven:/net.postgis:postgis-jdbc:RELEASE[2.2.1]" ignore-dependencies="true" optional="true" bundle="!drivers.postgresql"/>
 
@@ -254,6 +294,7 @@
                     <property name="loginTimeout" value="20"/>
                     <property name="connectTimeout" value="20"/>
                 </driver>
+                <!-- Bad driver: it must be declared in generic provider -->
                 <driver
                     id="postgresql"
                     label="PostgreSQL (Old)"
@@ -265,19 +306,6 @@
                     webURL="http://jdbc.postgresql.org/"
                     description="PostgreSQL generic driver. Can be used for old (7.x) or non-standard PostgreSQL servers."
                     categories="sql">
-                    <replace provider="generic" driver="postgresql_generic"/>
-
-                    <file type="jar" path="maven:/org.postgresql:postgresql:RELEASE[42.2.5]" bundle="!drivers.postgresql"/>
-                    <file type="license" path="drivers/postgresql/LICENSE.txt" bundle="drivers.postgresql"/>
-                    <file type="jar" path="drivers/postgresql/postgresql.jar" bundle="drivers.postgresql"/>
-
-                    <property name="loginTimeout" value="20"/>
-                    <property name="connectTimeout" value="20"/>
-
-                    <parameter name="query-get-active-db" value="select current_schema()"/>
-                    <parameter name="query-set-active-db" value="SET search_path = &quot;?&quot;"/>
-                    <parameter name="active-entity-type" value="schema"/>
-                    <parameter name="supports-scroll" value="true"/>
                 </driver>
 
                 <driver
@@ -299,7 +327,7 @@
                         iconBig="icons/timescale_icon_big.png"
                         class="org.postgresql.Driver"
                         sampleURL="jdbc:postgresql://{host}[:{port}]/[{database}]"
-                        useURL="false"
+                        useURL="true"
                         defaultPort="5432"
                         webURL="http://timescale.com/"
                         propertiesURL="https://jdbc.postgresql.org/documentation/head/connect.html#connection-parameters"
@@ -322,7 +350,7 @@
                         iconBig="icons/yellowbrick_icon_big.png"
                         class="org.postgresql.Driver"
                         sampleURL="jdbc:postgresql://{host}[:{port}]/[{database}]"
-                        useURL="false"
+                        useURL="true"
                         defaultPort="5432"
                         webURL="http://yellowbrick.io/"
                         propertiesURL="https://jdbc.postgresql.org/documentation/head/connect.html#connection-parameters"
@@ -335,6 +363,7 @@
                     <parameter name="serverType" value="yellowbrick"/>
                     <property name="loginTimeout" value="20"/>
                     <property name="connectTimeout" value="20"/>
+                    <property name="@dbeaver-default-resultset.maxrows.sql" value="true"/>
                 </driver>
 
                 <driver
@@ -344,7 +373,7 @@
                         iconBig="icons/cockroach_icon_big.png"
                         class="org.postgresql.Driver"
                         sampleURL="jdbc:postgresql://{host}[:{port}]/[{database}]"
-                        useURL="false"
+                        useURL="true"
                         defaultPort="26257"
                         webURL="https://www.cockroachlabs.com/product/cockroachdb/"
                         propertiesURL="https://jdbc.postgresql.org/documentation/head/connect.html#connection-parameters"

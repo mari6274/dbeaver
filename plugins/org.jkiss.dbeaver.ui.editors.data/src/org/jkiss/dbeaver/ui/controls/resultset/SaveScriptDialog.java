@@ -50,6 +50,7 @@ class SaveScriptDialog extends BaseDialog {
     private Object sqlPanel;
     private ResultSetSaveSettings saveSettings;
     private ResultSetSaveReport saveReport;
+    private String scriptText;
 
     SaveScriptDialog(ResultSetViewer viewer, ResultSetSaveReport saveReport) {
         super(viewer.getControl().getShell(), "Preview changes", UIIcon.SQL_SCRIPT);
@@ -110,20 +111,30 @@ class SaveScriptDialog extends BaseDialog {
         Runnable settingsRefreshHandler)
     {
         GridData gd;
-        Composite settingsComposite = UIUtils.createComposite(messageGroup, 2);
+        Composite settingsComposite = UIUtils.createComposite(messageGroup, 3);
         gd = new GridData(GridData.FILL_HORIZONTAL);
         gd.grabExcessHorizontalSpace = true;
         settingsComposite.setLayoutData(gd);
 
+        Button useFQNamesCheck = UIUtils.createCheckbox(settingsComposite, "Use fully qualified names", "", settings.isUseFullyQualifiedNames(), 1);
         Button deleteCascadeCheck = UIUtils.createCheckbox(settingsComposite, "Delete cascade",
-            "Delete rows from all tables referencing this table by foreign keys", false, 1);
+            "Delete rows from all tables referencing this table by foreign keys", settings.isDeleteCascade(), 1);
         Button deleteDeepCascadeCheck = UIUtils.createCheckbox(settingsComposite, "Deep cascade",
-            "Delete cascade recursively (deep references)", false, 1);
+            "Delete cascade recursively (deep references)", settings.isDeepCascade(), 1);
 
         if (!enableControls) {
+            useFQNamesCheck.setEnabled(false);
             deleteCascadeCheck.setEnabled(false);
             deleteDeepCascadeCheck.setEnabled(false);
         } else {
+            useFQNamesCheck.setEnabled(true);
+            useFQNamesCheck.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    settings.setUseFullyQualifiedNames(useFQNamesCheck.getSelection());
+                    settingsRefreshHandler.run();
+                }
+            });
             deleteCascadeCheck.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -193,7 +204,7 @@ class SaveScriptDialog extends BaseDialog {
                 }
             });
 
-            String scriptText = "";
+            scriptText = "";
             if (!sqlScript.isEmpty()) {
                 scriptText = SQLUtils.generateScript(
                     viewer.getDataSource(),
@@ -210,8 +221,16 @@ class SaveScriptDialog extends BaseDialog {
                 }
             }
         } catch (Exception e) {
-            DBWorkbench.getPlatformUI().showError("Can't generalte SQL script", "Error generating SQL script from changes", e);
+            DBWorkbench.getPlatformUI().showError("Can't generate SQL script", "Error generating SQL script from data changes", e);
         }
     }
 
+    @Override
+    protected void buttonPressed(int buttonId) {
+        if (buttonId == IDialogConstants.DETAILS_ID) {
+            ResultSetUtils.copyToClipboard(scriptText);
+            super.buttonPressed(IDialogConstants.CANCEL_ID);
+        }
+        super.buttonPressed(buttonId);
+    }
 }

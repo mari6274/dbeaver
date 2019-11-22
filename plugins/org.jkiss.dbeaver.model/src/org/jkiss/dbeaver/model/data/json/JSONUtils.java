@@ -23,6 +23,10 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBConstants;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
+import org.jkiss.dbeaver.runtime.serialize.DBPObjectSerializer;
+import org.jkiss.dbeaver.runtime.serialize.SerializerRegistry;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.IOException;
@@ -110,6 +114,13 @@ public class JSONUtils {
     }
 
     @NotNull
+    public static JsonWriter field(@NotNull JsonWriter json, @NotNull String name, @Nullable Number value) throws IOException {
+        json.name(name);
+        if (value == null) json.nullValue(); else json.value(value);
+        return json;
+    }
+
+    @NotNull
     public static JsonWriter fieldNE(@NotNull JsonWriter json, @NotNull String name, @Nullable String value) throws IOException {
         if (CommonUtils.isEmpty(value)) {
             return json;
@@ -151,34 +162,96 @@ public class JSONUtils {
         }
     }
 
-    public static void serializeObjectList(@NotNull JsonWriter json, @NotNull String tagName, @Nullable Collection<Object> list) throws IOException {
+    public static void serializeObjectList(@NotNull JsonWriter json, @NotNull String tagName, @Nullable Collection<?> list) throws IOException {
         if (!CommonUtils.isEmpty(list)) {
             json.name(tagName);
-            json.beginArray();
-            for (Object value : CommonUtils.safeCollection(list)) {
-                if (value == null) {
-                    json.nullValue();
-                } else if (value instanceof Number) {
-                    json.value((Number) value);
-                } else if (value instanceof Boolean) {
-                    json.value((Boolean) value);
-                } else {
-                    json.value(value.toString());
-                }
-            }
-            json.endArray();
+            serializeCollection(json, list);
         }
     }
 
-    public static void serializeProperties(@NotNull JsonWriter json, @NotNull String tagName, @Nullable Map<String, String> properties) throws IOException {
+    public static void serializeProperties(@NotNull JsonWriter json, @NotNull String tagName, @Nullable Map<String, ?> properties) throws IOException {
         if (!CommonUtils.isEmpty(properties)) {
             json.name(tagName);
-            json.beginObject();
-            for (Map.Entry<String, String> entry : properties.entrySet()) {
-                field(json, entry.getKey(), entry.getValue());
-            }
-            json.endObject();
+            serializeMap(json, properties);
         }
+    }
+
+    public static void serializeCollection(@NotNull JsonWriter json, @NotNull Collection<?> list) throws IOException {
+        json.beginArray();
+        for (Object value : CommonUtils.safeCollection(list)) {
+            if (value == null) {
+                json.nullValue();
+            } else if (value instanceof Number) {
+                json.value((Number) value);
+            } else if (value instanceof Boolean) {
+                json.value((Boolean) value);
+            } else if (value instanceof String) {
+                json.value(value.toString());
+            } else if (value instanceof Map) {
+                serializeMap(json, (Map<String, ?>) value);
+            } else if (value instanceof Collection) {
+                serializeCollection(json, (Collection<?>) value);
+            } else {
+                json.value(value.toString());
+            }
+        }
+        json.endArray();
+    }
+
+    public static void serializeMap(@NotNull JsonWriter json, @NotNull Map<String, ?> map) throws IOException {
+        json.beginObject();
+        for (Map.Entry<String, ?> entry : map.entrySet()) {
+            Object propValue = entry.getValue();
+            String fieldName = entry.getKey();
+            if (propValue == null) {
+                //field(json, fieldName, (String)null);
+                //continue;
+            } else if (propValue instanceof Number) {
+                field(json, fieldName, (Number)propValue);
+            } else if (propValue instanceof String) {
+                String strValue = (String) propValue;
+                if (!strValue.isEmpty()) {
+                    field(json, fieldName, strValue);
+                }
+            } else if (propValue instanceof Boolean) {
+                field(json, fieldName, (Boolean) propValue);
+            } else if (propValue instanceof Collection) {
+                serializeObjectList(json, fieldName, (Collection<?>) propValue);
+            } else if (propValue instanceof Map) {
+                serializeProperties(json, fieldName, (Map<String, ?>) propValue);
+            } else {
+                log.debug("Unsupported property type: " + propValue.getClass().getName());
+                field(json, fieldName, propValue.toString());
+            }
+        }
+        json.endObject();
+    }
+
+    public static <OBJECT_CONTEXT, OBJECT_TYPE> Map<String, Object> serializeObject(DBRProgressMonitor monitor, @NotNull OBJECT_TYPE object) {
+        DBPObjectSerializer<OBJECT_CONTEXT, OBJECT_TYPE> serializer = SerializerRegistry.getInstance().createSerializer(object);
+        if (serializer == null) {
+            log.error("No serializer found for object " + object.getClass().getName());
+            return null;
+        }
+        Map<String, Object> state = new LinkedHashMap<>();
+
+        Map<String, Object> location = new LinkedHashMap<>();
+        serializer.serializeObject(monitor, object, location);
+        state.put("type", SerializerRegistry.getInstance().getObjectType(object));
+        state.put("location", location);
+
+        return state;
+    }
+
+    public static <OBJECT_CONTEXT, OBJECT_TYPE> Object deserializeObject(@NotNull DBRRunnableContext runnableContext,  OBJECT_CONTEXT objectContext, @NotNull Map<String, Object> objectConfig) {
+        String typeID = CommonUtils.toString(objectConfig.get("type"));
+        DBPObjectSerializer<OBJECT_CONTEXT, OBJECT_TYPE> serializer = SerializerRegistry.getInstance().createSerializerByType(typeID);
+        if (serializer == null) {
+            log.error("No deserializer found for type " + typeID);
+            return null;
+        }
+        Map<String, Object> location = getObject(objectConfig, "location");
+        return serializer.deserializeObject(runnableContext, objectContext, location);
     }
 
     @NotNull
@@ -233,16 +306,30 @@ public class JSONUtils {
     }
 
     @NotNull
-    public static Collection<Map<String, Object>> getObjectList(@NotNull Map<String, Object> map, @NotNull String name) {
-        List<Map<String, Object>> list = (List<Map<String, Object>> ) map.get(name);
-        if (list == null) {
-            return Collections.emptyList();
+    public static List<Map<String, Object>> getObjectList(@NotNull Map<String, Object> map, @NotNull String name) {
+        Object value = map.get(name);
+        if (value instanceof List) {
+            return  (List<Map<String, Object>>) value;
+        }
+        return Collections.emptyList();
+    }
+
+    @Nullable
+    public static Map<String, Object> deserializeProperties(Map<String, Object> map, String name) {
+        Object propMap = map.get(name);
+        if (propMap instanceof Map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?,?> pe : ((Map<?, ?>) propMap).entrySet()) {
+                result.put(CommonUtils.toString(pe.getKey()), pe.getValue());
+            }
+            return result;
         } else {
-            return list;
+            return null;
         }
     }
 
-    public static Map<String, String> deserializeProperties(Map<String, Object> map, String name) {
+    @NotNull
+    public static Map<String, String> deserializeStringMap(Map<String, Object> map, String name) {
         Map<String, String> result = new LinkedHashMap<>();
         Object propMap = map.get(name);
         if (propMap instanceof Map) {
@@ -253,6 +340,7 @@ public class JSONUtils {
         return result;
     }
 
+    @NotNull
     public static List<String> deserializeStringList(Map<String, Object> map, String name) {
         List<String> result = new ArrayList<>();
         Object propMap = map.get(name);

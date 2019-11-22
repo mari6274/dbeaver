@@ -22,6 +22,7 @@ package org.jkiss.dbeaver.model.sql;
  */
 public final class SQLModelPreferences {
 
-    public final static String SQL_FORMAT_FORMATTER = "sql.format.formatter";
+    public final static String SQL_FORMAT_FORMATTER             = "sql.format.formatter";
+    public static final String SQL_PROPOSAL_INSERT_TABLE_ALIAS  = "sql.proposals.insert.table.alias";
 
 }

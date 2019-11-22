@@ -34,33 +34,40 @@
     <extension point="org.eclipse.ui.views">
         <category id="org.jkiss.dbeaver.core.category" name="%category.org.jkiss.dbeaver.core.category.name"/>
         <view
-                id="org.jkiss.dbeaver.core.databaseNavigator"
-                category="org.jkiss.dbeaver.core.category"
-                class="org.jkiss.dbeaver.ui.navigator.database.DatabaseNavigatorView"
-                allowMultiple="false"
-                icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/databases.png"
-                name="%view.database.navigator.title"/>
+            id="org.jkiss.dbeaver.core.databaseNavigator"
+            category="org.jkiss.dbeaver.core.category"
+            class="org.jkiss.dbeaver.ui.navigator.database.DatabaseNavigatorView"
+            allowMultiple="false"
+            icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/databases.png"
+            name="%view.database.navigator.title"/>
         <view
-                id="org.jkiss.dbeaver.core.databaseBrowser"
-                category="org.jkiss.dbeaver.core.category"
-                class="org.jkiss.dbeaver.ui.navigator.database.DatabaseBrowserView"
-                allowMultiple="true"
-                icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/database_navigator.png"
-                name="%view.database.browser.title"/>
+            id="org.jkiss.dbeaver.core.databaseBrowser"
+            category="org.jkiss.dbeaver.core.category"
+            class="org.jkiss.dbeaver.ui.navigator.database.DatabaseBrowserView"
+            allowMultiple="true"
+            icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/database_navigator.png"
+            name="%view.database.browser.title"/>
         <view
-                id="org.jkiss.dbeaver.core.projectNavigator"
-                category="org.jkiss.dbeaver.core.category"
-                class="org.jkiss.dbeaver.ui.navigator.project.ProjectNavigatorView"
-                allowMultiple="false"
-                icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/projects.png"
-                name="%view.project.navigator.title"/>
+            id="org.jkiss.dbeaver.core.projectNavigator"
+            category="org.jkiss.dbeaver.core.category"
+            class="org.jkiss.dbeaver.ui.navigator.project.ProjectNavigatorView"
+            allowMultiple="false"
+            icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/projects.png"
+            name="%view.project.navigator.title"/>
         <view
-                id="org.jkiss.dbeaver.core.projectExplorer"
-                category="org.jkiss.dbeaver.core.category"
-                class="org.jkiss.dbeaver.ui.navigator.project.ProjectExplorerView"
-                allowMultiple="false"
-                icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/project.png"
-                name="%view.project.explorer.title"/>
+            id="org.jkiss.dbeaver.core.projectExplorer"
+            category="org.jkiss.dbeaver.core.category"
+            class="org.jkiss.dbeaver.ui.navigator.project.ProjectExplorerView"
+            allowMultiple="false"
+            icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/project.png"
+            name="%view.project.explorer.title"/>
+        <view
+            id="org.jkiss.dbeaver.tasks"
+            category="org.jkiss.dbeaver.core.category"
+            class="org.jkiss.dbeaver.ui.task.DatabaseTasksView"
+            allowMultiple="false"
+            icon="icons/task_list.png"
+            name="%view.tasks.title"/>
     </extension>
 
     <extension point="org.eclipse.ui.newWizards">
@@ -133,6 +140,14 @@
             namespace="org.jkiss.dbeaver.ui.editors.folder"
             properties="canNavigate"
             type="org.jkiss.dbeaver.ui.editors.entity.FolderEditor"/>
+
+        <propertyTester
+            class="org.jkiss.dbeaver.ui.task.TaskPropertyTester"
+            id="org.jkiss.dbeaver.ui.task.TaskPropertyTester"
+            namespace="org.jkiss.dbeaver.task"
+            properties="scheduled"
+            type="org.jkiss.dbeaver.model.task.DBTTask"/>
+
     </extension>
 
     <extension point="org.eclipse.ui.editors">
@@ -178,6 +193,11 @@
                 <test property="org.jkiss.dbeaver.core.navigator.focused" forcePluginActivation="true"/>
             </with>
         </definition>
+        <definition id="org.jkiss.dbeaver.tasks.part.active">
+            <with variable="activePartId">
+                <equals value="org.jkiss.dbeaver.tasks"/>
+            </with>
+        </definition>
         <definition id="org.jkiss.dbeaver.core.ui.folder.editor">
             <with variable="activeEditor">
                 <instanceof value="org.jkiss.dbeaver.ui.editors.entity.FolderEditor"/>
@@ -213,7 +233,10 @@
     <extension point="org.eclipse.ui.commands">
         <category id="org.jkiss.dbeaver.core.navigator" name="%category.dbnavigator.name" description="%category.dbnavigator.description"/>
 
-        <command id="org.jkiss.dbeaver.core.object.open" name="%command.org.jkiss.dbeaver.core.object.open.name" description="%command.org.jkiss.dbeaver.core.object.open.description" categoryId="org.jkiss.dbeaver.core.database"/>
+        <command id="org.jkiss.dbeaver.core.object.open" name="%command.org.jkiss.dbeaver.core.object.open.name" description="%command.org.jkiss.dbeaver.core.object.open.description" categoryId="org.jkiss.dbeaver.core.database">
+            <commandParameter id="activePage" name="Active page" optional="true"/>
+            <commandParameter id="activeFolder" name="Active folder" optional="true"/>
+        </command>
         <command id="org.jkiss.dbeaver.core.object.create" name="%command.org.jkiss.dbeaver.core.object.create.name" description="%command.org.jkiss.dbeaver.core.object.create.description" categoryId="org.jkiss.dbeaver.core.database">
             <commandParameter id="org.jkiss.dbeaver.core.object.type" name="Object type" optional="true"/>
             <commandParameter id="org.jkiss.dbeaver.core.object.typeName" name="Object type name" optional="true"/>
@@ -261,6 +284,12 @@
         <command id="org.jkiss.dbeaver.ui.tools.select.schema" name="%command.org.jkiss.dbeaver.ui.tools.select.schema.name" description="%command.org.jkiss.dbeaver.ui.tools.select.schema.description" categoryId="org.jkiss.dbeaver.core.database">
             <commandParameter id="noCustomLabel" name="Show original command name" optional="true"/>
         </command>
+
+        <command id="org.jkiss.dbeaver.task.run" name="%command.org.jkiss.dbeaver.task.run.name" description="%command.org.jkiss.dbeaver.task.run.description" categoryId="org.jkiss.dbeaver.core.navigator">
+            <commandParameter id="task" name="Task" optional="true"/>
+        </command>
+        <command id="org.jkiss.dbeaver.task.edit" name="%command.org.jkiss.dbeaver.task.edit.name" description="%command.org.jkiss.dbeaver.task.edit.description" categoryId="org.jkiss.dbeaver.core.navigator"/>
+        <command id="org.jkiss.dbeaver.task.create" name="%command.org.jkiss.dbeaver.task.create.name" description="%command.org.jkiss.dbeaver.task.create.description" categoryId="org.jkiss.dbeaver.core.navigator"/>
     </extension>
 
     <extension point="org.eclipse.ui.commandImages">
@@ -289,6 +318,9 @@
 
         <image commandId="org.jkiss.dbeaver.ui.tools.select.connection" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/database.png"/>
         <image commandId="org.jkiss.dbeaver.ui.tools.select.schema" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/schema.png"/>
+
+        <image commandId="org.jkiss.dbeaver.task.run" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/run.png"/>
+        <image commandId="org.jkiss.dbeaver.task.create" icon="icons/task_create.png"/>
     </extension>
 
     <extension point="org.eclipse.ui.handlers">
@@ -681,20 +713,8 @@
             </enabledWhen>
         </handler>
 
-        <handler commandId="org.eclipse.ui.navigate.collapseAll" class="org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerCollapseAll">
-            <enabledWhen>
-                <with variable="activePart">
-                    <adapt type="org.jkiss.dbeaver.ui.navigator.INavigatorModelView"/>
-                </with>
-            </enabledWhen>
-        </handler>
-        <handler commandId="org.eclipse.ui.navigate.expandAll" class="org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerExpandAll">
-            <enabledWhen>
-                <with variable="activePart">
-                    <adapt type="org.jkiss.dbeaver.ui.navigator.INavigatorModelView"/>
-                </with>
-            </enabledWhen>
-        </handler>
+        <handler commandId="org.eclipse.ui.navigate.collapseAll" class="org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerCollapseAll"/>
+        <handler commandId="org.eclipse.ui.navigate.expandAll" class="org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerExpandAll"/>
         <handler commandId="org.jkiss.dbeaver.core.navigator.view.configure" class="org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerViewConfigure"/>
         <handler commandId="org.jkiss.dbeaver.core.navigator.linkeditor" class="org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerLinkEditor">
             <enabledWhen>
@@ -745,9 +765,54 @@
                 </with>
             </enabledWhen>
         </handler>
+
+        <!-- Task view handlers -->
+        <handler commandId="org.eclipse.ui.edit.delete" class="org.jkiss.dbeaver.ui.task.TaskHandlerDelete">
+            <activeWhen><reference definitionId="org.jkiss.dbeaver.tasks.part.active"/></activeWhen>
+            <enabledWhen>
+                <with variable="selection">
+                    <count value="+"/>
+                </with>
+            </enabledWhen>
+        </handler>
+        <handler commandId="org.eclipse.ui.file.properties" class="org.jkiss.dbeaver.ui.task.TaskHandlerEdit">
+            <activeWhen><reference definitionId="org.jkiss.dbeaver.tasks.part.active"/></activeWhen>
+            <enabledWhen>
+                <with variable="selection">
+                    <count value="+"/>
+                </with>
+            </enabledWhen>
+        </handler>
+        <handler commandId="org.jkiss.dbeaver.task.run" class="org.jkiss.dbeaver.ui.task.TaskHandlerRun">
+            <activeWhen><reference definitionId="org.jkiss.dbeaver.tasks.part.active"/></activeWhen>
+            <enabledWhen>
+                <with variable="selection">
+                    <count value="+"/>
+                </with>
+            </enabledWhen>
+        </handler>
+        <handler commandId="org.jkiss.dbeaver.task.edit" class="org.jkiss.dbeaver.ui.task.TaskHandlerEdit">
+            <activeWhen><reference definitionId="org.jkiss.dbeaver.tasks.part.active"/></activeWhen>
+            <enabledWhen>
+                <with variable="selection">
+                    <count value="+"/>
+                </with>
+            </enabledWhen>
+        </handler>
+        <handler commandId="org.jkiss.dbeaver.task.create" class="org.jkiss.dbeaver.ui.task.TaskHandlerCreate"/>
+        <handler commandId="org.eclipse.ui.file.refresh" class="org.jkiss.dbeaver.ui.task.TaskHandlerRefresh">
+            <activeWhen><reference definitionId="org.jkiss.dbeaver.tasks.part.active"/></activeWhen>
+        </handler>
+
     </extension>
 
     <extension point="org.eclipse.ui.menus">
+        <menuContribution allPopups="false" locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
+            <toolbar id="dbeaver-tools" label="Database Tools Toolbar">
+                <separator name="additions" visible="false"/>
+            </toolbar>
+        </menuContribution>
+
         <menuContribution allPopups="false" locationURI="popup:org.eclipse.ui.popup.any?after=create">
             <command commandId="org.jkiss.dbeaver.core.object.create">
                 <visibleWhen>
@@ -772,6 +837,34 @@
             </menu>
         </menuContribution>
 
+        <menuContribution allPopups="false" locationURI="toolbar:org.jkiss.dbeaver.tasks">
+<!--            <command commandId="org.eclipse.ui.file.properties"/>-->
+            <command commandId="org.jkiss.dbeaver.task.run"/>
+            <command commandId="org.jkiss.dbeaver.task.create"/>
+            <command commandId="org.eclipse.ui.edit.delete"/>
+            <separator name="additions" visible="true"/>
+        </menuContribution>
+
+        <menuContribution allPopups="false" locationURI="toolbar:dbeaver-tools?after=additions">
+            <separator name="tasks" visible="true"/>
+            <command commandId="org.eclipse.ui.views.showView" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/task.png" label="%view.tasks.title" style="pulldown" id="org.jkiss.dbeaver.menu.tasks">
+                <parameter name="org.eclipse.ui.views.showView.viewId" value="org.jkiss.dbeaver.tasks"/>
+            </command>
+        </menuContribution>
+
+        <menuContribution allPopups="false" locationURI="menu:dataSourceMenu?after=tools">
+            <menu id="org.jkiss.dbeaver.menu.tasks" label="%menu.database.tasks.label"  icon="icons/task_list.png"/>
+        </menuContribution>
+
+        <menuContribution allPopups="false" locationURI="menu:org.jkiss.dbeaver.menu.tasks">
+            <command commandId="org.jkiss.dbeaver.task.create"/>
+            <command commandId="org.eclipse.ui.views.showView" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/task.png" label="%view.tasks.title" style="pulldown" id="org.jkiss.dbeaver.menu.tasks">
+                <parameter name="org.eclipse.ui.views.showView.viewId" value="org.jkiss.dbeaver.tasks"/>
+            </command>
+            <separator name="tasks" visible="true"/>
+            <dynamic id="org.jkiss.dbeaver.menu.tasks.recent" class="org.jkiss.dbeaver.ui.task.RecentTasksMenuContributor"/>
+        </menuContribution>
+
     </extension>
 
     <extension point="org.eclipse.ui.bindings">
@@ -783,6 +876,7 @@
         <key commandId="org.jkiss.dbeaver.core.navigator.set.active" schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="CTRL+SHIFT+A"/>
         <key commandId="org.jkiss.dbeaver.core.object.goto" contextId="org.eclipse.ui.contexts.window" schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="CTRL+SHIFT+D"/>
         <key commandId="org.jkiss.dbeaver.core.object.open" contextId="org.jkiss.dbeaver.ui.context.navigator" schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="F4"/>
+        <key commandId="org.jkiss.dbeaver.task.edit" schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="Enter"/>
     </extension>
 
 </plugin>

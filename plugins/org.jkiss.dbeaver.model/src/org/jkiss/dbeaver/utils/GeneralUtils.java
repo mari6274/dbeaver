@@ -25,6 +25,7 @@ import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.bundle.ModelActivator;
 import org.jkiss.dbeaver.model.impl.app.ApplicationDescriptor;
 import org.jkiss.dbeaver.model.impl.app.ApplicationRegistry;
+import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.utils.Base64;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
@@ -368,8 +369,13 @@ public class GeneralUtils {
         return calendar.getTime();
     }
 
-    public interface IVariableResolver {
-        String get(String name);
+    public static String getExpressionParseMessage(Exception e) {
+        String message = e.getMessage();
+        if (message == null) {
+            return e.getClass().getName();
+        }
+        int divPos = message.indexOf('@');
+        return divPos == -1 ? message : message.substring(divPos + 1);
     }
 
     public interface IParameterHandler {

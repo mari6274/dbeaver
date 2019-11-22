@@ -31,6 +31,7 @@ import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.IWorkbenchCommandConstants;
+import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.dialogs.FilteredTree;
 import org.eclipse.ui.dialogs.PatternFilter;
 import org.eclipse.ui.progress.WorkbenchJob;
@@ -64,7 +65,6 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
     private DBNModel model;
     private TreeEditor treeEditor;
     private boolean checkEnabled;
-    private ISelection defaultSelection;
     private INavigatorFilter navigatorFilter;
     private Text filterControl;
 
@@ -82,7 +82,6 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
         super(parent, SWT.NONE);
         this.setLayout(new FillLayout());
         this.navigatorFilter = navigatorFilter;
-        this.defaultSelection = new TreeSelection(new TreePath(rootNode == null ? new Object[0] : new Object[] { rootNode } ));
         this.model = DBWorkbench.getPlatform().getNavigatorModel();
         this.model.addListener(this);
         addDisposeListener(e -> {
@@ -118,8 +117,20 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
         treeViewer.setInput(new DatabaseNavigatorContent(rootNode));
     }
 
-    INavigatorFilter getNavigatorFilter() {
+    public INavigatorFilter getNavigatorFilter() {
         return navigatorFilter;
+    }
+
+    public void setNavigatorFilter(INavigatorFilter navigatorFilter) {
+        this.navigatorFilter = navigatorFilter;
+        if (treeViewer != null) {
+            treeViewer.addFilter(new ViewerFilter() {
+                @Override
+                public boolean select(Viewer viewer, Object parentElement, Object element) {
+                    return navigatorFilter.select(element);
+                }
+            });
+        }
     }
 
     @Nullable
@@ -135,7 +146,7 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
         if (checkEnabled) {
             CheckboxTreeViewer checkboxTreeViewer = new CheckboxTreeViewer(parent, treeStyle);
             if (navigatorFilter != null) {
-                checkboxTreeViewer.setFilters(new ViewerFilter() {
+                checkboxTreeViewer.addFilter(new ViewerFilter() {
                     @Override
                     public boolean select(Viewer viewer, Object parentElement, Object element) {
                         return navigatorFilter.select(element);
@@ -159,7 +170,14 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
             @Override
             public ISelection getSelection() {
                 ISelection selection = super.getSelection();
-                return selection.isEmpty() && defaultSelection != null ? defaultSelection : selection;
+                if (!selection.isEmpty()) {
+                    return selection;
+                }
+                Object rootNode = getInput();
+                if (rootNode instanceof DatabaseNavigatorContent) {
+                    rootNode = ((DatabaseNavigatorContent) rootNode).getRootNode();
+                }
+                return rootNode == null ? new TreeSelection() : new TreeSelection(new TreePath(new Object[] { rootNode } ));
             }
             protected void handleTreeExpand(TreeEvent event) {
                 // Disable redraw during expand (its blinking)
@@ -397,8 +415,9 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
                 return;
             }
 
+            IWorkbenchPart activePart = UIUtils.getActiveWorkbenchWindow().getActivePage().getActivePart();
             if (!(newSelection.getData() instanceof DBNNode) ||
-                !(ActionUtils.isCommandEnabled(IWorkbenchCommandConstants.FILE_RENAME, UIUtils.getActiveWorkbenchWindow().getActivePage().getActivePart().getSite()))) {
+                activePart == null || !(ActionUtils.isCommandEnabled(IWorkbenchCommandConstants.FILE_RENAME, activePart.getSite()))) {
                 curSelection = null;
                 return;
             }
@@ -469,7 +488,11 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
                     disposeOldEditor();
                     treeViewer.getTree().setFocus();
                     if (!CommonUtils.isEmpty(newName) && !newName.equals(node.getNodeName())) {
-                        NavigatorHandlerObjectRename.renameNode(UIUtils.getActiveWorkbenchWindow(), node, newName);
+                        NavigatorHandlerObjectRename.renameNode(
+                            UIUtils.getActiveWorkbenchWindow(),
+                            treeViewer.getControl().getShell(),
+                            node,
+                            newName);
                     }
                 } else if (e.keyCode == SWT.ESC) {
                     disposeOldEditor();

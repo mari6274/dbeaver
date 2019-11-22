@@ -40,7 +40,6 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSSchema;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerRegistry;
-import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.encode.EncryptionException;
 import org.jkiss.dbeaver.runtime.encode.PasswordEncrypter;
 import org.jkiss.dbeaver.runtime.encode.SimpleStringEncrypter;
@@ -80,7 +79,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
     @Override
     public void saveDataSources(
         DBRProgressMonitor monitor,
-        boolean primaryConfig,
+        DataSourceOrigin origin,
         List<DataSourceDescriptor> localDataSources,
         IFile configFile) throws DBException, IOException
     {
@@ -90,7 +89,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
             XMLBuilder xml = new XMLBuilder(tempStream, GeneralUtils.UTF8_ENCODING);
             xml.setButify(true);
             try (XMLBuilder.Element el1 = xml.startElement("data-sources")) {
-                if (primaryConfig) {
+                if (origin.isDefault()) {
                     // Folders (only for default origin)
                     for (DataSourceFolder folder : registry.getAllFolders()) {
                         saveFolder(xml, folder);
@@ -106,7 +105,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
                 }
 
                 // Filters
-                if (primaryConfig) {
+                if (origin.isDefault()) {
                     try (XMLBuilder.Element ignored = xml.startElement(RegistryConstants.TAG_FILTERS)) {
                         for (DBSObjectFilter cf : registry.getSavedFilters()) {
                             if (!cf.isEmpty()) {
@@ -135,14 +134,14 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
     }
 
     @Override
-    public void parseDataSources(InputStream is, DataSourceOrigin origin, boolean refresh, DataSourceRegistry.ParseResults parseResults)
+    public void parseDataSources(IFile configFile, DataSourceOrigin origin, boolean refresh, DataSourceRegistry.ParseResults parseResults)
         throws DBException, IOException
     {
-        SAXReader parser = new SAXReader(is);
         try {
+            SAXReader parser = new SAXReader(configFile.getContents());
             final DataSourcesParser dsp = new DataSourcesParser(registry, origin, refresh, parseResults);
             parser.parse(dsp);
-        } catch (XMLException ex) {
+        } catch (Exception ex) {
             throw new DBException("Datasource config parse error", ex);
         }
     }
@@ -268,13 +267,13 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
                         configuration.getUserName(),
                         configuration.isSavePassword() ? configuration.getPassword() : null);
                 }
-                for (Map.Entry<String, String> entry : configuration.getProperties().entrySet()) {
-                    if (CommonUtils.isEmpty(entry.getValue())) {
+                for (Map.Entry<String, Object> entry : configuration.getProperties().entrySet()) {
+                    if (entry.getValue() == null) {
                         continue;
                     }
                     xml.startElement(RegistryConstants.TAG_PROPERTY);
                     xml.addAttribute(RegistryConstants.ATTR_NAME, entry.getKey());
-                    xml.addAttribute(RegistryConstants.ATTR_VALUE, CommonUtils.notEmpty(entry.getValue()));
+                    xml.addAttribute(RegistryConstants.ATTR_VALUE, CommonUtils.notEmpty(entry.getValue().toString()));
                     xml.endElement();
                 }
                 xml.endElement();
@@ -588,7 +587,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
                     break;
                 case RegistryConstants.TAG_PROPERTY:
                     if (curNetworkHandler != null) {
-                        curNetworkHandler.getProperties().put(
+                        curNetworkHandler.setProperty(
                             atts.getValue(RegistryConstants.ATTR_NAME),
                             atts.getValue(RegistryConstants.ATTR_VALUE));
                     } else if (curDataSource != null) {
@@ -754,7 +753,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
 
         private String[] readSecuredCredentials(Attributes xmlAttrs, DataSourceDescriptor dataSource, String subNode) {
             String[] creds = new String[2];
-            final DBASecureStorage secureStorage = DBWorkbench.getPlatform().getSecureStorage();
+            final DBASecureStorage secureStorage = dataSource.getProject().getSecureStorage();
             {
                 try {
                     if (secureStorage.useSecurePreferences()) {

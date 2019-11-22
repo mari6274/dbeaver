@@ -28,7 +28,6 @@ import org.jkiss.dbeaver.model.impl.jdbc.exec.JDBCSavepointImpl;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.qm.QMUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.model.struct.DBSInstance;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -86,7 +85,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
         boolean connectionReadOnly = dataSource.getContainer().isConnectionReadOnly();
         DBExecUtils.startContextInitiation(dataSource.getContainer());
         try {
-            this.connection = dataSource.openConnection(monitor, instance, purpose);
+            this.connection = dataSource.openConnection(monitor, this, purpose);
             if (this.connection == null) {
                 throw new DBCException("Null connection returned");
             }
@@ -212,12 +211,10 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
         if (!checkOk) {
             Boolean prevAutocommit = autoCommit;
             Integer txnLevel = transactionIsolationLevel;
-            boolean addNewContext = false;
             if (closeOnFailure) {
-                close();
-                addNewContext = true;
+                closeContext(false);
             }
-            connect(monitor, prevAutocommit, txnLevel, true, addNewContext);
+            connect(monitor, prevAutocommit, txnLevel, true, false);
 
             return InvalidateResult.RECONNECTED;
         }
@@ -226,6 +223,11 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public void close()
+    {
+        closeContext(true);
+    }
+
+    private void closeContext(boolean removeContext)
     {
         // [JDBC] Need sync here because real connection close could take some time
         // while UI may invoke callbacks to operate with connection
@@ -237,8 +239,10 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
             super.closeContext();
         }
 
-        // Remove self from context list
-        this.instance.removeContext(this);
+        if (removeContext) {
+            // Remove self from context list
+            this.instance.removeContext(this);
+        }
     }
 
     //////////////////////////////////////////////////////////////

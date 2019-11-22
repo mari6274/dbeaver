@@ -99,11 +99,12 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
         switch (type.getTypeID()) {
             case Types.DOUBLE:
             case Types.REAL:
+            case Types.FLOAT:
+                // Always read as double to avoid precision loose (#7214)
                 value = resultSet.getDouble(index);
                 break;
-            case Types.FLOAT:
-                value = resultSet.getFloat(index);
-                break;
+                //value = resultSet.getFloat(index);
+                //break;
             case Types.INTEGER:
                 try {
                     // Read value with maximum precision. Some drivers reports INTEGER but means long [JDBC:SQLite]
@@ -137,7 +138,12 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
                     }
                 } else {
                     // bit string
-                    return CommonUtils.toBinaryString(resultSet.getLong(index), CommonUtils.toInt(type.getPrecision()));
+                    String bitString = CommonUtils.toBinaryString(resultSet.getLong(index), CommonUtils.toInt(type.getPrecision()));
+                    if (resultSet.wasNull()) {
+                        return null;
+                    } else {
+                        return bitString;
+                    }
                 }
                 break;
             default:
@@ -359,7 +365,7 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
     }
 
     @Override
-    public Object generateDefaultValue(DBSTypedObject type) {
+    public Object generateDefaultValue(DBCSession session, DBSTypedObject type) {
         switch (type.getTypeID()) {
             case Types.BIGINT:
                 return 0L;

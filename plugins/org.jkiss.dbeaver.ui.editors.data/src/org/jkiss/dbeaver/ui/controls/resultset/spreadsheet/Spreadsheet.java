@@ -36,6 +36,7 @@ import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.lightgrid.*;
 import org.jkiss.dbeaver.ui.controls.resultset.AbstractPresentation;
 import org.jkiss.dbeaver.ui.controls.resultset.ResultSetPreferences;
+import org.jkiss.utils.CommonUtils;
 
 /**
  * ResultSetControl
@@ -192,12 +193,12 @@ public class Spreadsheet extends LightGrid implements Listener {
 
         GridCell newCell = posToCell(newPos);
         if (newCell != null) {
-            setCursor(newCell, keepSelection);
+            setCursor(newCell, keepSelection, true);
         }
         return true;
     }
 
-    public void setCursor(@NotNull GridCell cell, boolean keepSelection)
+    void setCursor(@NotNull GridCell cell, boolean keepSelection, boolean showColumn)
     {
         Event selectionEvent = new Event();
         // Move row
@@ -211,7 +212,9 @@ public class Spreadsheet extends LightGrid implements Listener {
         // Move column
         if (pos.col >= 0) {
             super.setFocusColumn(pos.col);
-            super.showColumn(pos.col);
+            if (showColumn) {
+                super.showColumn(pos.col);
+            }
         }
 
         if (!keepSelection) {
@@ -280,8 +283,9 @@ public class Spreadsheet extends LightGrid implements Listener {
                 GridPos pos = super.getCell(new Point(event.x, event.y));
                 GridPos focusPos = super.getFocusPos();
                 if (pos != null && focusPos != null && pos.equals(super.getFocusPos())) {
-                    DoubleClickBehavior doubleClickBehavior = DoubleClickBehavior.valueOf(
-                        presentation.getPreferenceStore().getString(ResultSetPreferences.RESULT_SET_DOUBLE_CLICK));
+                    DoubleClickBehavior doubleClickBehavior = CommonUtils.valueOf(DoubleClickBehavior.class,
+                        presentation.getPreferenceStore().getString(ResultSetPreferences.RESULT_SET_DOUBLE_CLICK),
+                        DoubleClickBehavior.NONE);
 
                     switch (doubleClickBehavior) {
                         case NONE:
@@ -306,9 +310,7 @@ public class Spreadsheet extends LightGrid implements Listener {
             case LightGrid.Event_FilterColumn:
             	//showFiltersMenu
             	presentation.showFiltering(event.data);
-            	
-            	
-            	break;                
+            	break;
             case LightGrid.Event_NavigateLink:
                 // Perform navigation async because it may change grid content and
                 // we don't want to mess current grid state
@@ -332,8 +334,9 @@ public class Spreadsheet extends LightGrid implements Listener {
             // Let controller to provide it's own menu items
             GridPos focusPos = getFocusPos();
             presentation.fillContextMenu(
-                manager, focusPos.col >= 0 && focusPos.col < columnElements.length ? columnElements[focusPos.col] : null,
-                focusPos.row >= 0 && focusPos.row < rowElements.length ? rowElements[focusPos.row] : null
+                manager,
+                isHoveringOnRowHeader() ? null : focusPos.col >= 0 && focusPos.col < columnElements.length ? columnElements[focusPos.col] : null,
+                isHoveringOnHeader() ? null : (focusPos.row >= 0 && focusPos.row < rowElements.length ? rowElements[focusPos.row] : null)
             );
         });
         menuMgr.setRemoveAllWhenShown(true);

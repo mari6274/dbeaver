@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.core.application;
 
+import org.apache.commons.cli.CommandLine;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
@@ -39,9 +40,9 @@ import org.jkiss.dbeaver.core.application.rpc.DBeaverInstanceServer;
 import org.jkiss.dbeaver.core.application.rpc.IInstanceController;
 import org.jkiss.dbeaver.core.application.update.VersionUpdateDialog;
 import org.jkiss.dbeaver.model.app.DBASecureStorage;
-import org.jkiss.dbeaver.model.app.DBPApplication;
 import org.jkiss.dbeaver.model.impl.app.DefaultSecureStorage;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.registry.BaseApplicationImpl;
 import org.jkiss.dbeaver.registry.BaseWorkspaceImpl;
 import org.jkiss.dbeaver.registry.updater.VersionDescriptor;
 import org.jkiss.dbeaver.ui.UIUtils;
@@ -51,10 +52,6 @@ import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.IOUtils;
 import org.jkiss.utils.StandardConstants;
-import org.osgi.framework.Bundle;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.BundleEvent;
-import org.osgi.framework.BundleListener;
 
 import java.io.*;
 import java.net.URL;
@@ -63,7 +60,7 @@ import java.util.Properties;
 /**
  * This class controls all aspects of the application's execution
  */
-public class DBeaverApplication implements IApplication, DBPApplication {
+public class DBeaverApplication extends BaseApplicationImpl {
 
     private static final Log log = Log.getLog(DBeaverApplication.class);
 
@@ -90,6 +87,8 @@ public class DBeaverApplication implements IApplication, DBPApplication {
 
     static DBeaverApplication instance;
     boolean reuseWorkspace = false;
+    private boolean primaryInstance = true;
+    private boolean headlessMode = false;
 
     private IInstanceController instanceServer;
 
@@ -155,11 +154,19 @@ public class DBeaverApplication implements IApplication, DBPApplication {
     public Object start(IApplicationContext context) {
         instance = this;
 
-        // Set display name at the very beginning (#609)
-        // This doesn't initialize display - just sets default title
-        Display.setAppName(GeneralUtils.getProductName());
-
         Location instanceLoc = Platform.getInstanceLocation();
+        CommandLine commandLine = DBeaverCommandLine.getCommandLine();
+        {
+            String defaultHomePath = WORKSPACE_DIR_CURRENT;
+            if (instanceLoc.isSet()) {
+                defaultHomePath = instanceLoc.getURL().getFile();
+            }
+            if (DBeaverCommandLine.handleCommandLine(commandLine, defaultHomePath)) {
+                log.debug("Commands processed. Exit " + GeneralUtils.getProductName() + ".");
+                return IApplication.EXIT_OK;
+            }
+        }
+
         // Lock the workspace
         try {
             if (!instanceLoc.isSet()) {
@@ -181,43 +188,21 @@ public class DBeaverApplication implements IApplication, DBPApplication {
             e.printStackTrace();
         }
 
-        // Create display
-        getDisplay();
-
-        DelayedEventsProcessor processor = new DelayedEventsProcessor(display);
-
+        // Custom parameters
         try {
-            // look and see if there's a splash shell we can parent off of
-            Shell shell = WorkbenchPlugin.getSplashShell(display);
-            if (shell != null) {
-                // should should set the icon and message for this shell to be the
-                // same as the chooser dialog - this will be the guy that lives in
-                // the task bar and without these calls you'd have the default icon
-                // with no message.
-                shell.setText(ChooseWorkspaceDialog.getWindowTitle());
-                shell.setImages(Window.getDefaultImages());
+            headlessMode = true;
+            if (DBeaverCommandLine.handleCustomParameters(commandLine)) {
+                return IApplication.EXIT_OK;
             }
-        } catch (Throwable e) {
-            e.printStackTrace(System.err);
-            System.err.println("Error updating splash shell");
+        } finally {
+            headlessMode = false;
         }
 
-
-        // Add bundle load logger
-        Bundle brandingBundle = context.getBrandingBundle();
-        if (brandingBundle != null) {
-            BundleContext bundleContext = brandingBundle.getBundleContext();
-            if (bundleContext != null) {
-                bundleContext.addBundleListener(new BundleLoadListener());
-            }
-        }
-        Log.addListener((message, t) -> DBeaverSplashHandler.showMessage(CommonUtils.toString(message)));
+        updateSplashHandler();
 
         final Runtime runtime = Runtime.getRuntime();
 
         // Init Core plugin and mark it as standalone version
-
-        DBeaverCore.setApplication(this);
 
         initDebugWriter();
 
@@ -234,7 +219,7 @@ public class DBeaverApplication implements IApplication, DBPApplication {
         initializeApplication();
 
         // Run instance server
-        instanceServer = DBeaverInstanceServer.startInstanceServer();
+        instanceServer = DBeaverInstanceServer.startInstanceServer(commandLine, createInstanceController());
 
         // Prefs default
         PlatformUI.getPreferenceStore().setDefault(
@@ -242,6 +227,7 @@ public class DBeaverApplication implements IApplication, DBPApplication {
             ApplicationWorkbenchAdvisor.DBEAVER_SCHEME_NAME);
         try {
             log.debug("Run workbench");
+            getDisplay();
             int returnCode = PlatformUI.createAndRunWorkbench(display, createWorkbenchAdvisor());
 
             if (resetUIOnRestart) {
@@ -281,6 +267,35 @@ public class DBeaverApplication implements IApplication, DBPApplication {
         }
     }
 
+    private void updateSplashHandler() {
+        if (ArrayUtils.contains(Platform.getApplicationArgs(), "-nosplash")) {
+            return;
+        }
+        try {
+            getDisplay();
+
+            // look and see if there's a splash shell we can parent off of
+            Shell shell = WorkbenchPlugin.getSplashShell(display);
+            if (shell != null) {
+                // should set the icon and message for this shell to be the
+                // same as the chooser dialog - this will be the guy that lives in
+                // the task bar and without these calls you'd have the default icon
+                // with no message.
+                shell.setText(ChooseWorkspaceDialog.getWindowTitle());
+                shell.setImages(Window.getDefaultImages());
+            }
+        } catch (Throwable e) {
+            e.printStackTrace(System.err);
+            System.err.println("Error updating splash shell");
+        }
+
+        Log.addListener((message, t) -> DBeaverSplashHandler.showMessage(CommonUtils.toString(message)));
+    }
+
+    protected IInstanceController createInstanceController() {
+        return new DBeaverInstanceServer();
+    }
+
     private void resetUISettings(Location instanceLoc) {
         try {
             File instanceDir = new File(instanceLoc.getURL().toURI());
@@ -305,7 +320,15 @@ public class DBeaverApplication implements IApplication, DBPApplication {
     private Display getDisplay() {
         if (display == null) {
             log.debug("Create display");
-            display = PlatformUI.createDisplay();
+            // Set display name at the very beginning (#609)
+            // This doesn't initialize display - just sets default title
+            Display.setAppName(GeneralUtils.getProductName());
+
+            display = Display.getCurrent();
+            if (display == null) {
+                display = PlatformUI.createDisplay();
+            }
+            DelayedEventsProcessor processor = new DelayedEventsProcessor(display);
         }
         return display;
     }
@@ -334,10 +357,6 @@ public class DBeaverApplication implements IApplication, DBPApplication {
         } catch (Throwable e) {
             log.error("Error migrating old workspace version", e);
         }
-        if (DBeaverCommandLine.handleCommandLine(defaultHomePath)) {
-            log.debug("Commands processed. Exit " + GeneralUtils.getProductName() + ".");
-            return false;
-        }
         try {
             // Make URL manually because file.toURI().toURL() produces bad path (with %20).
             final URL defaultHomeURL = new URL(
@@ -350,6 +369,7 @@ public class DBeaverApplication implements IApplication, DBPApplication {
                     if (reuseWorkspace) {
                         instanceLoc.set(defaultHomeURL, false);
                         keepTrying = false;
+                        primaryInstance = false;
                     } else {
                         // Can't lock specified path
                         int msgResult = showMessageBox(
@@ -365,6 +385,7 @@ public class DBeaverApplication implements IApplication, DBPApplication {
                             case SWT.IGNORE:
                                 instanceLoc.set(defaultHomeURL, false);
                                 keepTrying = false;
+                                primaryInstance = false;
                                 break;
                             case SWT.RETRY:
                                 break;
@@ -380,8 +401,6 @@ public class DBeaverApplication implements IApplication, DBPApplication {
             // Error may occur if -data parameter was specified at startup
             System.err.println("Can't switch workspace to '" + defaultHomePath + "' - " + e.getMessage());  //$NON-NLS-1$ //$NON-NLS-2$
         }
-        // Custom parameters
-        DBeaverCommandLine.handleCustomParameters();
 
         return true;
     }
@@ -483,6 +502,16 @@ public class DBeaverApplication implements IApplication, DBPApplication {
         return true;
     }
 
+    @Override
+    public boolean isPrimaryInstance() {
+        return primaryInstance;
+    }
+
+    @Override
+    public boolean isHeadlessMode() {
+        return headlessMode;
+    }
+
     @NotNull
     @Override
     public DBASecureStorage getSecureStorage() {
@@ -511,32 +540,17 @@ public class DBeaverApplication implements IApplication, DBPApplication {
         return msgResult;
     }
 
-    public void notifyVersionUpgrade(VersionDescriptor versionDescriptor, boolean showSkip) {
+    public void notifyVersionUpgrade(VersionDescriptor currentVersion, VersionDescriptor newVersion, boolean showSkip) {
         VersionUpdateDialog dialog = new VersionUpdateDialog(
             UIUtils.getActiveWorkbenchShell(),
-            versionDescriptor,
+            currentVersion,
+            newVersion,
             showSkip);
         dialog.open();
     }
 
     public void setResetUIOnRestart(boolean resetUIOnRestart) {
         this.resetUIOnRestart = resetUIOnRestart;
-    }
-
-    private static class BundleLoadListener implements BundleListener {
-        @Override
-        public void bundleChanged(BundleEvent event) {
-            String message = null;
-
-            if (event.getType() == BundleEvent.STARTED) {
-                message = "> Start " + event.getBundle().getSymbolicName() + " [" + event.getBundle().getVersion() + "]";
-            } else if (event.getType() == BundleEvent.STOPPING) {
-                message = "< Stop " + event.getBundle().getSymbolicName() + " [" + event.getBundle().getVersion() + "]";
-            }
-            if (message != null) {
-                log.debug(message);
-            }
-        }
     }
 
     private class ProxyPrintStream extends OutputStream {
@@ -549,10 +563,29 @@ public class DBeaverApplication implements IApplication, DBPApplication {
         }
 
         @Override
+        public void write(@NotNull byte[] b) throws IOException {
+            debugWriter.write(b);
+            stdOut.write(b);
+        }
+
+        @Override
+        public void write(@NotNull byte[] b, int off, int len) throws IOException {
+            debugWriter.write(b, off, len);
+            stdOut.write(b, off, len);
+        }
+
+        @Override
         public void write(int b) throws IOException {
             debugWriter.write(b);
             stdOut.write(b);
         }
+
+        @Override
+        public void flush() throws IOException {
+            debugWriter.flush();
+            stdOut.flush();
+        }
+
     }
 
 }

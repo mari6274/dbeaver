@@ -17,13 +17,13 @@
 package org.jkiss.dbeaver.model.sql.eval;
 
 import org.jkiss.dbeaver.model.sql.SQLScriptContext;
-import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.utils.CommonUtils;
 
 /**
  * ScriptVariablesResolver
  */
-public class ScriptVariablesResolver implements GeneralUtils.IVariableResolver {
+public class ScriptVariablesResolver implements IVariableResolver {
 
     private final SQLScriptContext scriptContext;
 

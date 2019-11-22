@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.ext.mssql.model;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.ext.mssql.SQLServerConstants;
 import org.jkiss.dbeaver.ext.mssql.SQLServerUtils;
 import org.jkiss.dbeaver.model.DBPDataKind;
@@ -29,6 +30,7 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSProcedureParameter;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -38,6 +40,11 @@ public class SQLServerDialect extends JDBCSQLDialect {
         /*{
             "BEGIN^TRANSACTION", "END"
         }*/
+    };
+
+    public static String[] SQLSERVER_EXTRA_KEYWORDS = new String[]{
+        "TOP",
+        "SYNONYM",
     };
 
     public static final String[][] SQLSERVER_QUOTE_STRINGS = {
@@ -55,10 +62,11 @@ public class SQLServerDialect extends JDBCSQLDialect {
 
     public void initDriverSettings(JDBCDataSource dataSource, JDBCDatabaseMetaData metaData) {
         super.initDriverSettings(dataSource, metaData);
-        addSQLKeyword("TOP");
+        super.addSQLKeywords(Arrays.asList(SQLSERVER_EXTRA_KEYWORDS));
         this.dataSource = dataSource;
     }
 
+    @NotNull
     @Override
     public String getScriptDelimiter() {
         return "GO";
@@ -71,11 +79,13 @@ public class SQLServerDialect extends JDBCSQLDialect {
 
     }
 
+    @NotNull
     @Override
     public String[] getExecuteKeywords() {
         return EXEC_KEYWORDS;
     }
 
+    @NotNull
     @Override
     public String[] getParametersPrefixes() {
         return super.getParametersPrefixes();
@@ -93,6 +103,11 @@ public class SQLServerDialect extends JDBCSQLDialect {
         return true;
     }
 
+    @Override
+    public boolean supportsAliasInSelect() {
+        return true;
+    }
+
     public String[][] getIdentifierQuoteStrings() {
         return SQLSERVER_QUOTE_STRINGS;
     }
@@ -102,6 +117,7 @@ public class SQLServerDialect extends JDBCSQLDialect {
         return TSQL_BEGIN_END_BLOCK;
     }
 
+    @NotNull
     @Override
     public MultiValueInsertMode getMultiValueInsertMode() {
         if (SQLServerUtils.isDriverSqlServer(dataSource.getContainer().getDriver())) {
@@ -115,7 +131,7 @@ public class SQLServerDialect extends JDBCSQLDialect {
     }
 
     @Override
-    public String getColumnTypeModifiers(DBPDataSource dataSource, DBSTypedObject column, String typeName, DBPDataKind dataKind) {
+    public String getColumnTypeModifiers(DBPDataSource dataSource, @NotNull DBSTypedObject column, @NotNull String typeName, @NotNull DBPDataKind dataKind) {
         if (dataKind == DBPDataKind.DATETIME) {
             if (SQLServerConstants.TYPE_DATETIME2.equalsIgnoreCase(typeName)) {
                 Integer scale = column.getScale();
@@ -128,9 +144,7 @@ public class SQLServerDialect extends JDBCSQLDialect {
                 case "char":
                 case "nchar":
                 case "varchar":
-                case "nvarchar":
-                case "text":
-                case "ntext": {
+                case "nvarchar": {
                     long maxLength = column.getMaxLength();
                     if (maxLength == 0) {
                         return null;
@@ -140,6 +154,9 @@ public class SQLServerDialect extends JDBCSQLDialect {
                         return "(" + maxLength + ")";
                     }
                 }
+                case "text":
+                case "ntext":
+                    // text and ntext don't have max length
                 default:
                     return null;
             }

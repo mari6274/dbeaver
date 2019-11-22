@@ -30,12 +30,10 @@ import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.app.DBPProjectListener;
 import org.jkiss.dbeaver.model.navigator.*;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
-import org.jkiss.dbeaver.ui.IHelpContextIds;
-import org.jkiss.dbeaver.ui.LazyLabelProvider;
-import org.jkiss.dbeaver.ui.ProgramInfo;
-import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.controls.ViewerColumnController;
 import org.jkiss.dbeaver.ui.navigator.database.NavigatorViewBase;
+import org.jkiss.dbeaver.ui.project.PrefPageProjectResourceSettings;
 import org.jkiss.utils.CommonUtils;
 
 import java.text.SimpleDateFormat;
@@ -45,8 +43,7 @@ import java.util.Date;
 /**
  * ProjectExplorerView
  */
-public class ProjectExplorerView extends NavigatorViewBase implements DBPProjectListener
-{
+public class ProjectExplorerView extends NavigatorViewBase implements DBPProjectListener {
 
     //static final Log log = Log.getLog(ProjectExplorerView.class);
 
@@ -58,37 +55,39 @@ public class ProjectExplorerView extends NavigatorViewBase implements DBPProject
     }
 
     @Override
-    public DBNNode getRootNode()
-    {
+    public DBNNode getRootNode() {
         DBNProject projectNode = getModel().getRoot().getProjectNode(DBWorkbench.getPlatform().getWorkspace().getActiveProject());
         return projectNode != null ? projectNode : getModel().getRoot();
     }
 
     @Override
-    public void createPartControl(Composite parent)
-    {
+    public void createPartControl(Composite parent) {
         super.createPartControl(parent);
-        final TreeViewer viewer = getNavigatorViewer();
-        assert viewer != null;
-        viewer.getTree().setHeaderVisible(true);
-        createColumns(viewer);
+
         UIUtils.setHelp(parent, IHelpContextIds.CTX_PROJECT_EXPLORER);
 
+        final TreeViewer viewer = getNavigatorViewer();
         viewer.addFilter(new ViewerFilter() {
             @Override
             public boolean select(Viewer viewer, Object parentElement, Object element) {
                 return !(element instanceof DBNProjectDatabases);
             }
         });
-        updateTitle();
+
+        viewer.getTree().setHeaderVisible(true);
+
+        UIExecutionQueue.queueExec(() -> {
+            createColumns(viewer);
+            updateTitle();
+        });
     }
 
-    private void createColumns(final TreeViewer viewer)
-    {
+    private void createColumns(final TreeViewer viewer) {
         final Color shadowColor = viewer.getControl().getDisplay().getSystemColor(SWT.COLOR_WIDGET_DARK_SHADOW);
 
         final ILabelProvider mainLabelProvider = (ILabelProvider) viewer.getLabelProvider();
         columnController = new ViewerColumnController("projectExplorer", viewer);
+        columnController.setForceAutoSize(true);
         columnController.addColumn("Name", "Resource name", SWT.LEFT, true, true, new TreeColumnViewerLabelProvider(new LabelProvider() {
             @Override
             public String getText(Object element) {
@@ -192,18 +191,16 @@ public class ProjectExplorerView extends NavigatorViewBase implements DBPProject
                 return "";
             }
         }));
-        columnController.createColumns(false);
+        UIUtils.asyncExec(() -> columnController.createColumns(true));
     }
 
     @Override
-    protected int getTreeStyle()
-    {
+    protected int getTreeStyle() {
         return super.getTreeStyle() | SWT.FULL_SELECTION;
     }
 
     @Override
-    public void dispose()
-    {
+    public void dispose() {
         DBWorkbench.getPlatform().getWorkspace().removeProjectListener(this);
         super.dispose();
     }
@@ -219,22 +216,24 @@ public class ProjectExplorerView extends NavigatorViewBase implements DBPProject
     }
 
     @Override
-    public void handleActiveProjectChange(DBPProject oldValue, DBPProject newValue)
-    {
+    public void handleActiveProjectChange(DBPProject oldValue, DBPProject newValue) {
         UIUtils.asyncExec(() -> {
             getNavigatorTree().reloadTree(getRootNode());
             updateTitle();
-            UIUtils.packColumns(getNavigatorTree().getViewer().getTree(), true, null);
         });
+        //columnController.autoSizeColumns();
     }
 
-    private void updateTitle()
-    {
+    private void updateTitle() {
         setPartName("Project - " + getRootNode().getNodeName());
     }
 
     public void configureView() {
-        columnController.configureColumns();
+        //columnController.configureColumns();
+        DBPProject activeProject = DBWorkbench.getPlatform().getWorkspace().getActiveProject();
+        if (activeProject != null) {
+            UIUtils.showPreferencesFor(getSite().getShell(), activeProject.getEclipseProject(), PrefPageProjectResourceSettings.PAGE_ID);
+        }
     }
 
 }

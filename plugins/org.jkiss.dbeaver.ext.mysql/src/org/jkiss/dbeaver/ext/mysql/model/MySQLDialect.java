@@ -45,6 +45,7 @@ class MySQLDialect extends JDBCSQLDialect {
         "AUTO_INCREMENT",
         "DATABASES",
         "COLUMNS",
+        "ALGORITHM"
     };
 
     public static final String[][] MYSQL_QUOTE_STRINGS = {
@@ -78,6 +79,7 @@ class MySQLDialect extends JDBCSQLDialect {
         return MYSQL_QUOTE_STRINGS;
     }
 
+    @NotNull
     @Override
     public String[] getExecuteKeywords() {
         return EXEC_KEYWORDS;

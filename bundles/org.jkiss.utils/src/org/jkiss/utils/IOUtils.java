@@ -17,16 +17,12 @@
 
 package org.jkiss.utils;
 
-import org.jkiss.code.NotNull;
-
 import java.io.*;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
-import java.util.Calendar;
-import java.util.Date;
 
 /**
  * Some IO helper functions
@@ -180,6 +176,18 @@ public final class IOUtils {
         return buffer;
     }
 
+    public static void writeFileFromBuffer(File file, byte[] buffer) throws IOException {
+        try (OutputStream os = new FileOutputStream(file)) {
+            os.write(buffer);
+        }
+    }
+
+    public static void writeFileFromString(File file, String str) throws IOException {
+        try (Writer os = new FileWriter(file)) {
+            os.write(str);
+        }
+    }
+
     public static int readStreamToBuffer(
         java.io.InputStream inputStream,
         byte[] buffer)
@@ -263,25 +271,4 @@ public final class IOUtils {
         return result.toString();
     }
 
-    public static void makeFileBackup(File file) throws IOException {
-        if (!file.exists()) {
-            return;
-        }
-        String backupFileName = file.getName() + ".bak";
-        if (!backupFileName.startsWith(".")) {
-            backupFileName = "." + backupFileName;
-        }
-        File backupFile = new File(file.getParent(), backupFileName);
-        if (backupFile.exists()) {
-            Date backupTime = new Date(backupFile.lastModified());
-            if (CommonUtils.isSameDay(backupTime, new Date())) {
-                return;
-            }
-        }
-        try (FileInputStream fis = new FileInputStream(file)) {
-            try (FileOutputStream fos = new FileOutputStream(backupFile)) {
-                fastCopy(fis, fos);
-            }
-        }
-    }
 }

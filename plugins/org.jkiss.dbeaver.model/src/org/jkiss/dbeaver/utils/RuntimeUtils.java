@@ -16,12 +16,11 @@
  */
 package org.jkiss.dbeaver.utils;
 
-import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.*;
 import org.eclipse.core.runtime.jobs.Job;
-import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.connection.DBPNativeClientLocation;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
@@ -32,17 +31,14 @@ import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * RuntimeUtils
@@ -234,6 +230,46 @@ public class RuntimeUtils {
         }
 
         return monitoringTask.finished;
+    }
+
+    public static String executeProcess(String binPath, String ... args) throws DBException {
+        try {
+            String[] cmdBin = {binPath};
+            String[] cmd = args == null ? cmdBin : ArrayUtils.concatArrays(cmdBin, args);
+            Process p = Runtime.getRuntime().exec(cmd);
+            try {
+                StringBuilder out = new StringBuilder();
+                readStringToBuffer(p.getInputStream(), out);
+
+                if (out.length() == 0) {
+                    StringBuilder err = new StringBuilder();
+                    readStringToBuffer(p.getErrorStream(), err);
+                    return err.toString();
+                }
+
+                return out.length() == 0 ? null: out.toString();
+            } finally {
+                p.destroy();
+            }
+        }
+        catch (Exception ex) {
+            throw new DBException("Error executing process " + binPath, ex);
+        }
+    }
+
+    private static void readStringToBuffer(InputStream is, StringBuilder out) throws IOException {
+        try (BufferedReader input = new BufferedReader(new InputStreamReader(is))) {
+            for (;;) {
+                String line = input.readLine();
+                if (line == null) {
+                    break;
+                }
+                if (out.length() > 0) {
+                    out.append("\n");
+                }
+                out.append(line);
+            }
+        }
     }
 
     public static boolean isPlatformMacOS() {

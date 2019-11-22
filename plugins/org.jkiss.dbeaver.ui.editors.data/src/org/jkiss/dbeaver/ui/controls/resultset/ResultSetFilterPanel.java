@@ -260,8 +260,8 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             filterToolbar.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING | GridData.VERTICAL_ALIGN_BEGINNING));
 
             filtersClearButton = new ToolItem(filterToolbar, SWT.PUSH | SWT.NO_FOCUS);
-            filtersClearButton.setImage(DBeaverIcons.getImage(UIIcon.FILTER_RESET));
-            filtersClearButton.setToolTipText(ResultSetMessages.sql_editor_resultset_filter_panel_btn_remove);
+            filtersClearButton.setImage(DBeaverIcons.getImage(UIIcon.ERASE));
+            filtersClearButton.setToolTipText(ActionUtils.findCommandDescription(ResultSetHandlerMain.CMD_FILTER_CLEAR_SETTING, viewer.getSite(), false));
             filtersClearButton.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -272,7 +272,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 
             filtersSaveButton = new ToolItem(filterToolbar, SWT.PUSH | SWT.NO_FOCUS);
             filtersSaveButton.setImage(DBeaverIcons.getImage(UIIcon.FILTER_SAVE));
-            filtersSaveButton.setToolTipText(ResultSetMessages.sql_editor_resultset_filter_panel_btn_save);
+            filtersSaveButton.setToolTipText(ActionUtils.findCommandDescription(ResultSetHandlerMain.CMD_FILTER_SAVE_SETTING, viewer.getSite(), false));
             filtersSaveButton.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -283,31 +283,29 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 
             ToolItem filtersCustomButton = new ToolItem(filterToolbar, SWT.PUSH | SWT.NO_FOCUS);
             filtersCustomButton.setImage(DBeaverIcons.getImage(UIIcon.CONFIG_TABLE));
-            filtersCustomButton.setToolTipText(ResultSetMessages.sql_editor_resultset_filter_panel_btn_custom);
+            filtersCustomButton.setToolTipText(ActionUtils.findCommandDescription(ResultSetHandlerMain.CMD_FILTER_EDIT_SETTINGS, viewer.getSite(), false));
             filtersCustomButton.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
-                    new FilterSettingsDialog(viewer).open();
+                    viewer.showFilterSettingsDialog();
                 }
             });
             filtersCustomButton.setEnabled(true);
 
             UIUtils.createToolBarSeparator(filterToolbar, SWT.VERTICAL);
 
-            refreshButton = new ToolItem(filterToolbar, SWT.PUSH | SWT.NO_FOCUS);
-            refreshButton.setToolTipText(ResultSetMessages.controls_resultset_viewer_action_refresh + " (" +
-                ActionUtils.findCommandDescription(IWorkbenchCommandConstants.FILE_REFRESH, viewer.getSite(), true) + ")");
-            refreshButton.setImage(DBeaverIcons.getImage(UIIcon.RS_REFRESH));
-            refreshButton.setEnabled(false);
-            refreshButton.addSelectionListener(new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
+            refreshButton = rsv.getAutoRefresh().populateRefreshButton(
+                filterToolbar,
+                ResultSetMessages.controls_resultset_viewer_action_refresh + " (" +
+                    ActionUtils.findCommandDescription(IWorkbenchCommandConstants.FILE_REFRESH, viewer.getSite(), true) + ")",
+                UIIcon.REFRESH,
+                () -> {
                     if (!viewer.isRefreshInProgress()) {
                         viewer.refreshData(null);
                     }
                 }
-            });
-            rsv.getAutoRefresh().populateRefreshButton(filterToolbar);
+            );
+            refreshButton.setEnabled(false);
 
             UIUtils.createToolBarSeparator(filterToolbar, SWT.VERTICAL);
 
@@ -614,6 +612,9 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         final DBRRunnableWithProgress reader = monitor -> {
             DBDAttributeBinding[] attributes = viewer.getModel().getAttributes();
             for (DBDAttributeBinding attribute : attributes) {
+                if (attribute.isCustom()) {
+                    continue;
+                }
                 final String name = DBUtils.getUnQuotedIdentifier(attribute.getDataSource(), attribute.getName());
                 if (CommonUtils.isEmpty(word) || name.toLowerCase(Locale.ENGLISH).startsWith(word)) {
                     final String content = DBUtils.getQuotedIdentifier(attribute) + " ";
@@ -1070,7 +1071,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
     private class RefreshPanel extends ToolItemPanel {
 
         RefreshPanel(Composite addressBar) {
-            super(addressBar, UIIcon.RS_REFRESH, ResultSetMessages.controls_resultset_viewer_action_refresh, SWT.RIGHT);
+            super(addressBar, UIIcon.REFRESH, ResultSetMessages.controls_resultset_viewer_action_refresh, SWT.RIGHT);
         }
 
         @Override

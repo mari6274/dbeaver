@@ -131,7 +131,7 @@ public class ResultSetHandlerOpenWith extends AbstractHandler implements IElemen
             options.setSelectedRows(selectedRows);
             options.setSelectedColumns(selectedAttributes);
         }
-        ResultSetDataContainer dataContainer = new ResultSetDataContainer(resultSet.getDataContainer(), resultSet.getModel(), options);
+        ResultSetDataContainer dataContainer = new ResultSetDataContainer(resultSet, options);
         if (dataContainer.getDataSource() == null) {
             DBWorkbench.getPlatformUI().showError("Open " + processor.getAppName(), ModelMessages.error_not_connected_to_database);
             return;
@@ -193,6 +193,8 @@ public class ResultSetHandlerOpenWith extends AbstractHandler implements IElemen
                     DatabaseProducerSettings producerSettings = new DatabaseProducerSettings();
                     producerSettings.setExtractType(DatabaseProducerSettings.ExtractType.SINGLE_QUERY);
                     producerSettings.setQueryRowCount(false);
+                    // disable OpenNewconnection by default (#6432)
+                    producerSettings.setOpenNewConnections(false);
                     producerSettings.setSelectedRowsOnly(!CommonUtils.isEmpty(options.getSelectedRows()));
                     producerSettings.setSelectedColumnsOnly(!CommonUtils.isEmpty(options.getSelectedColumns()));
 

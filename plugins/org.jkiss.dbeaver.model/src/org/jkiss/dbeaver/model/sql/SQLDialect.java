@@ -70,6 +70,14 @@ public interface SQLDialect {
     String[][] getIdentifierQuoteStrings();
 
     /**
+     * Retrieves strings used to quote SQL strings.
+     *
+     * @return the array of string pairs
+     */
+    @NotNull
+    String[][] getStringQuoteStrings();
+
+    /**
      * Retrieves a list of execute keywords. If database doesn't support implicit execute returns empty list or null.
      * @return the list of execute keywords.
      */
@@ -93,9 +101,9 @@ public interface SQLDialect {
     @NotNull
     Set<String> getReservedWords();
     @NotNull
-    Set<String> getFunctions(@NotNull DBPDataSource dataSource);
+    Set<String> getFunctions(@Nullable DBPDataSource dataSource);
     @NotNull
-    Set<String> getDataTypes(@NotNull DBPDataSource dataSource);
+    Set<String> getDataTypes(@Nullable DBPDataSource dataSource);
     @Nullable
     DBPKeywordType getKeywordType(@NotNull String word);
     @NotNull
@@ -184,14 +192,6 @@ public interface SQLDialect {
     String[] getBlockHeaderStrings();
 
     /**
-     * Script block toggle string.
-     * Begins and ends SQL blocks.
-     * @return block toggle string or null (not supported)
-     */
-    @Nullable
-    String getBlockToggleString();
-
-    /**
      * Retrieves whether a catalog appears at the start of a fully qualified
      * table name.  If not, the catalog appears at the end.
      *
@@ -211,7 +211,7 @@ public interface SQLDialect {
     /**
      * Checks that specified character is a valid identifier part. Non-valid characters should be quoted in queries.
      * @param c character
-     * @param quoted
+     * @param quoted is identifier quoted
      * @return true or false
      */
     boolean validIdentifierPart(char c, boolean quoted);
@@ -229,6 +229,10 @@ public interface SQLDialect {
     boolean supportsTableDropCascade();
 
     boolean supportsOrderByIndex();
+
+    boolean supportsOrderBy();
+
+    boolean supportsGroupBy();
 
     /**
      * Check whether dialect support plain comment queries (queries which contains only comments)

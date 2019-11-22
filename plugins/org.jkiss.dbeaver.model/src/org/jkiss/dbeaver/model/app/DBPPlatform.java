@@ -17,21 +17,19 @@
 
 package org.jkiss.dbeaver.model.app;
 
-import org.eclipse.core.resources.IProject;
 import org.jkiss.code.NotNull;
-import org.jkiss.dbeaver.model.connection.DBPDataSourceProviderRegistry;
 import org.jkiss.dbeaver.model.DBPExternalFileManager;
-import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.model.connection.DBPDataSourceProviderRegistry;
 import org.jkiss.dbeaver.model.data.DBDRegistry;
 import org.jkiss.dbeaver.model.edit.DBERegistry;
 import org.jkiss.dbeaver.model.navigator.DBNModel;
+import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.qm.QMController;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.OSDescriptor;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 
 /**
  * DBPPlatform
@@ -85,6 +83,9 @@ public interface DBPPlatform
 
     @NotNull
     File getTempFolder(DBRProgressMonitor monitor, String name) throws IOException;
+
+    @NotNull
+    File getApplicationConfiguration();
 
     @NotNull
     File getConfigurationFile(String fileName);

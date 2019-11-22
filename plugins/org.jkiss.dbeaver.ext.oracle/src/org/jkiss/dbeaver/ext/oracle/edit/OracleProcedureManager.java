@@ -23,14 +23,12 @@ import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedureType;
-import org.jkiss.dbeaver.ui.UITask;
-import org.jkiss.dbeaver.ui.editors.object.struct.CreateProcedurePage;
 
 import java.util.List;
 import java.util.Map;
@@ -50,23 +48,10 @@ public class OracleProcedureManager extends SQLObjectEditor<OracleProcedureStand
     @Override
     protected OracleProcedureStandalone createDatabaseObject(DBRProgressMonitor monitor, DBECommandContext context, final Object container, Object copyFrom, Map<String, Object> options)
     {
-        OracleProcedureStandalone procedure = new OracleProcedureStandalone(
+        return new OracleProcedureStandalone(
             (OracleSchema) container,
-            "PROC",
+            "NEW_PROCEDURE",
             DBSProcedureType.PROCEDURE);
-        return new UITask<OracleProcedureStandalone>() {
-            @Override
-            protected OracleProcedureStandalone runTask() {
-                CreateProcedurePage editPage = new CreateProcedurePage(procedure);
-                if (!editPage.edit()) {
-                    return null;
-                }
-                procedure.setName(editPage.getProcedureName());
-                procedure.setProcedureType(editPage.getProcedureType());
-
-                return procedure;
-            }
-        }.execute();
     }
 
     @Override

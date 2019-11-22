@@ -44,14 +44,20 @@ import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDataSource;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLState;
-import org.jkiss.dbeaver.model.struct.*;
+import org.jkiss.dbeaver.model.struct.DBSDataType;
+import org.jkiss.dbeaver.model.struct.DBSInstanceContainer;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.net.SocketException;
 import java.sql.*;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 
 /**
  * JDBC data source
@@ -105,7 +111,7 @@ public abstract class JDBCDataSource
         this.defaultRemoteInstance = new JDBCRemoteInstance<>(monitor, this, true);
     }
 
-    protected Connection openConnection(@NotNull DBRProgressMonitor monitor, JDBCRemoteInstance remoteInstance, @NotNull String purpose)
+    protected Connection openConnection(@NotNull DBRProgressMonitor monitor, @Nullable JDBCExecutionContext context, @NotNull String purpose)
         throws DBCException
     {
         // It MUST be a JDBC driver
@@ -119,7 +125,7 @@ public abstract class JDBCDataSource
         }
 
         DBPConnectionConfiguration connectionInfo = container.getActualConnectionConfiguration();
-        Properties connectProps = getAllConnectionProperties(monitor, purpose, connectionInfo);
+        Properties connectProps = getAllConnectionProperties(monitor, context, purpose, connectionInfo);
 
         // Obtain connection
         try {
@@ -182,7 +188,7 @@ public abstract class JDBCDataSource
             throw ex;
         }
         catch (Throwable e) {
-            throw new DBCConnectException("Unexpected driver error occurred while connecting to database", e);
+            throw new DBCConnectException("Unexpected driver error occurred while connecting to the database", e);
         }
     }
 
@@ -200,13 +206,13 @@ public abstract class JDBCDataSource
         }
     }
 
-    protected Properties getAllConnectionProperties(@NotNull DBRProgressMonitor monitor, String purpose, DBPConnectionConfiguration connectionInfo) throws DBCException {
+    protected Properties getAllConnectionProperties(@NotNull DBRProgressMonitor monitor, JDBCExecutionContext context, String purpose, DBPConnectionConfiguration connectionInfo) throws DBCException {
         // Set properties
         Properties connectProps = new Properties();
 
         {
             // Use properties defined by datasource itself
-            Map<String,String> internalProps = getInternalConnectionProperties(monitor, getContainer().getDriver(), purpose, connectionInfo);
+            Map<String,String> internalProps = getInternalConnectionProperties(monitor, getContainer().getDriver(), context, purpose, connectionInfo);
             if (internalProps != null) {
                 connectProps.putAll(internalProps);
             }
@@ -217,8 +223,13 @@ public abstract class JDBCDataSource
         if (!CommonUtils.isEmpty(connectionInfo.getUserName())) {
             connectProps.put(DBConstants.DATA_SOURCE_PROPERTY_USER, getConnectionUserName(connectionInfo));
         }
-        if (!CommonUtils.isEmpty(connectionInfo.getUserPassword())) {
-            connectProps.put(DBConstants.DATA_SOURCE_PROPERTY_PASSWORD, getConnectionUserPassword(connectionInfo));
+        boolean allowsEmptyPassword = getContainer().getDriver().isAllowsEmptyPassword();
+        String password = getConnectionUserPassword(connectionInfo);
+        if (password == null && allowsEmptyPassword) {
+            password = "";
+        }
+        if (!CommonUtils.isEmpty(password) || (allowsEmptyPassword && !CommonUtils.isEmpty(getConnectionUserName(connectionInfo)))) {
+            connectProps.put(DBConstants.DATA_SOURCE_PROPERTY_PASSWORD, password);
         }
         return connectProps;
     }
@@ -314,15 +325,19 @@ public abstract class JDBCDataSource
         return jdbcFactory;
     }
 
+    @NotNull
     @Override
     public JDBCRemoteInstance getDefaultInstance() {
         return defaultRemoteInstance;
     }
 
+    @NotNull
     @Override
     public List<? extends JDBCRemoteInstance> getAvailableInstances() {
         JDBCRemoteInstance defaultInstance = getDefaultInstance();
-        return defaultInstance == null ? Collections.emptyList() : Collections.singletonList(defaultInstance);
+        return defaultInstance == null ?
+            Collections.emptyList() :
+            Collections.singletonList(defaultInstance);
     }
 
     @Override
@@ -360,9 +375,9 @@ public abstract class JDBCDataSource
             }
 
             try {
-                dataSourceInfo = createDataSourceInfo(metaData);
+                dataSourceInfo = createDataSourceInfo(monitor, metaData);
             } catch (Throwable e) {
-                log.error("Error obtaining database info");
+                log.error("Error obtaining database info", e);
             }
         } catch (SQLException ex) {
             throw new DBException("Error getting JDBC meta data", ex, this);
@@ -613,13 +628,13 @@ public abstract class JDBCDataSource
      * @return predefined connection properties
      */
     @Nullable
-    protected Map<String, String> getInternalConnectionProperties(DBRProgressMonitor monitor, DBPDriver driver, String purpose, DBPConnectionConfiguration connectionInfo)
+    protected Map<String, String> getInternalConnectionProperties(DBRProgressMonitor monitor, DBPDriver driver, JDBCExecutionContext context, String purpose, DBPConnectionConfiguration connectionInfo)
         throws DBCException
     {
         return null;
     }
 
-    protected DBPDataSourceInfo createDataSourceInfo(@NotNull JDBCDatabaseMetaData metaData)
+    protected DBPDataSourceInfo createDataSourceInfo(DBRProgressMonitor monitor, @NotNull JDBCDatabaseMetaData metaData)
     {
         return new JDBCDataSourceInfo(metaData);
     }
@@ -668,7 +683,7 @@ public abstract class JDBCDataSource
     @Override
     public <T> T getAdapter(Class<T> adapter) {
         if (adapter == DBCTransactionManager.class) {
-            return adapter.cast(getDefaultInstance().getDefaultContext(false));
+            return adapter.cast(DBUtils.getDefaultContext(getDefaultInstance(), false));
         }
         return null;
     }

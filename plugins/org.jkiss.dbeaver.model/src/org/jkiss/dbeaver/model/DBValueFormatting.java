@@ -23,18 +23,16 @@ import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
 import org.jkiss.dbeaver.model.data.DBDDataFormatter;
 import org.jkiss.dbeaver.model.data.DBDDisplayFormat;
-import org.jkiss.dbeaver.model.impl.data.formatters.NumberDataFormatter;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.sql.SQLDataSource;
-import org.jkiss.dbeaver.model.struct.DBSDataType;
-import org.jkiss.dbeaver.model.struct.DBSTypedObject;
-import org.jkiss.dbeaver.model.struct.DBSTypedObjectEx;
+import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.ParseException;
@@ -54,9 +52,11 @@ public final class DBValueFormatting {
     static {
         //NATIVE_FLOAT_FORMATTER.setMaximumFractionDigits(NumberDataFormatter.MAX_FLOAT_FRACTION_DIGITS);
         NATIVE_FLOAT_FORMATTER.setDecimalSeparatorAlwaysShown(false);
+        NATIVE_FLOAT_FORMATTER.setRoundingMode(RoundingMode.UNNECESSARY);
 
         //NATIVE_DOUBLE_FORMATTER.setMaximumFractionDigits(340);
         NATIVE_DOUBLE_FORMATTER.setDecimalSeparatorAlwaysShown(false);
+        NATIVE_DOUBLE_FORMATTER.setRoundingMode(RoundingMode.UNNECESSARY);
     }
 
     @NotNull
@@ -142,7 +142,13 @@ public final class DBValueFormatting {
                 image = getTypeImage((DBSTypedObject) object);
             }
             if (image == null && useDefault) {
-                image = DBIcon.TYPE_OBJECT;
+                if (object instanceof DBSEntity) {
+                    image = DBIcon.TREE_TABLE;
+                } else if (object instanceof DBSEntityAssociation) {
+                    image = DBIcon.TREE_ASSOCIATION;
+                } else {
+                    image = DBIcon.TYPE_OBJECT;
+                }
             }
         }
         return image;
@@ -221,16 +227,18 @@ public final class DBValueFormatting {
     }
 
     public static String convertNumberToNativeString(Number value) {
-        if (value instanceof BigDecimal) {
-            return ((BigDecimal) value).toPlainString();
-        } else if (value instanceof Float) {
-            return NATIVE_FLOAT_FORMATTER.format(value);
-        } else if (value instanceof Double) {
-            return NATIVE_DOUBLE_FORMATTER.format(value);
-        } else {
-            return value.toString();
+        try {
+            if (value instanceof BigDecimal) {
+                return ((BigDecimal) value).toPlainString();
+            } else if (value instanceof Float) {
+                return NATIVE_FLOAT_FORMATTER.format(value);
+            } else if (value instanceof Double) {
+                return NATIVE_DOUBLE_FORMATTER.format(value);
+            }
+        } catch (Exception e) {
+            log.debug("Error converting number to string: " + e.getMessage());
         }
-
+        return value.toString();
     }
 
     public static String getBooleanString(boolean propertyValue) {

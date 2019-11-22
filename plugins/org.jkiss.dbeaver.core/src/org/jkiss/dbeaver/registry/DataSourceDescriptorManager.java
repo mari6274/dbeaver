@@ -21,13 +21,14 @@ import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceFolder;
 import org.jkiss.dbeaver.model.DBPObject;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
+import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEObjectMaker;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.edit.AbstractObjectManager;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.actions.datasource.DataSourceHandler;
 import org.jkiss.dbeaver.ui.dialogs.connection.CreateConnectionDialog;
@@ -74,6 +75,8 @@ public class DataSourceDescriptorManager extends AbstractObjectManager<DataSourc
             DBPDataSourceFolder folder = null;
             if (container instanceof DataSourceRegistry) {
                 registry = (DBPDataSourceRegistry) container;
+            } else if (container instanceof DBPProject) {
+                registry = ((DBPProject) container).getDataSourceRegistry();
             } else if (container instanceof DBPDataSourceFolder) {
                 folder = (DBPDataSourceFolder) container;
                 registry = folder.getDataSourceRegistry();
@@ -88,7 +91,8 @@ public class DataSourceDescriptorManager extends AbstractObjectManager<DataSourc
             dataSource.copyFrom(dsTpl);
             if (folder != null) {
                 dataSource.setFolder(folder);
-            } else {
+            } else if (dsTpl.getRegistry() == registry) {
+                // Copy folder only if we copy in the same project
                 dataSource.setFolder(dsTpl.getFolder());
             }
             // Generate new name
@@ -103,14 +107,11 @@ public class DataSourceDescriptorManager extends AbstractObjectManager<DataSourc
             dataSource.setName(newName);
             registry.addDataSource(dataSource);
         } else {
-            UIUtils.asyncExec(new Runnable() {
-                @Override
-                public void run() {
-                    CreateConnectionDialog dialog = new CreateConnectionDialog(
-                        UIUtils.getActiveWorkbenchWindow(),
-                        new NewConnectionWizard());
-                    dialog.open();
-                }
+            UIUtils.asyncExec(() -> {
+                CreateConnectionDialog dialog = new CreateConnectionDialog(
+                    UIUtils.getActiveWorkbenchWindow(),
+                    new NewConnectionWizard());
+                dialog.open();
             });
         }
         return null;
@@ -119,13 +120,7 @@ public class DataSourceDescriptorManager extends AbstractObjectManager<DataSourc
     @Override
     public void deleteObject(DBECommandContext commandContext, final DataSourceDescriptor object, Map<String, Object> options)
     {
-        Runnable remover = new Runnable() {
-            @Override
-            public void run()
-            {
-                object.getRegistry().removeDataSource(object);
-            }
-        };
+        Runnable remover = () -> object.getRegistry().removeDataSource(object);
         if (object.isConnected()) {
             DataSourceHandler.disconnectDataSource(object, remover);
         } else {

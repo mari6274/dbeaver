@@ -26,13 +26,13 @@ import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEObjectRenamer;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
 import org.jkiss.dbeaver.model.impl.sql.edit.struct.SQLTableManager;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.List;
@@ -83,12 +83,20 @@ public class OracleTableManager extends SQLTableManager<OracleTable, OracleSchem
     }
 
     @Override
-    protected void addObjectExtraActions(DBRProgressMonitor monitor, List<DBEPersistAction> actions, NestedObjectCommand<OracleTable, PropertyHandler> command, Map<String, Object> options) {
+    protected void addObjectExtraActions(DBRProgressMonitor monitor, List<DBEPersistAction> actions, NestedObjectCommand<OracleTable, PropertyHandler> command, Map<String, Object> options) throws DBException {
+        OracleTable table = command.getObject();
         if (command.getProperty("comment") != null) {
             actions.add(new SQLDatabasePersistAction(
                 "Comment table",
-                "COMMENT ON TABLE " + command.getObject().getFullyQualifiedName(DBPEvaluationContext.DDL) +
-                    " IS " + SQLUtils.quoteString(command.getObject(), command.getObject().getComment())));
+                "COMMENT ON TABLE " + table.getFullyQualifiedName(DBPEvaluationContext.DDL) +
+                    " IS " + SQLUtils.quoteString(table, table.getComment())));
+        }
+
+        // Column comments
+        for (OracleTableColumn column : CommonUtils.safeCollection(table.getAttributes(monitor))) {
+            if (!CommonUtils.isEmpty(column.getDescription())) {
+                OracleTableColumnManager.addColumnCommentAction(actions, column);
+            }
         }
     }
 

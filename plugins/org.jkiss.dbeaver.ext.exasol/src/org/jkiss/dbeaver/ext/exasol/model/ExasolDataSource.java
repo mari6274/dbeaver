@@ -30,19 +30,7 @@ import org.jkiss.dbeaver.ext.exasol.ExasolSysTablePrefix;
 import org.jkiss.dbeaver.ext.exasol.model.app.ExasolServerSessionManager;
 import org.jkiss.dbeaver.ext.exasol.model.cache.ExasolDataTypeCache;
 import org.jkiss.dbeaver.ext.exasol.model.plan.ExasolPlanAnalyser;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolBaseObjectGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolConnectionGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolGrantee;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolRole;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolRoleGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolSchemaGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolScriptGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolSecurityPolicy;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolSystemGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolTableGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolTableObjectType;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolUser;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolViewGrant;
+import org.jkiss.dbeaver.ext.exasol.model.security.*;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPDataSourceInfo;
 import org.jkiss.dbeaver.model.DBPErrorAssistant;
@@ -50,18 +38,12 @@ import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.admin.sessions.DBAServerSessionManager;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
-import org.jkiss.dbeaver.model.exec.DBCException;
-import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
-import org.jkiss.dbeaver.model.exec.DBCExecutionPurpose;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformType;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformer;
-import org.jkiss.dbeaver.model.exec.DBCSession;
+import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCDatabaseMetaData;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlan;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlanStyle;
 import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlanner;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
@@ -74,6 +56,7 @@ import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectSelector;
 import org.jkiss.dbeaver.model.struct.DBSStructureAssistant;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.utils.CommonUtils;
 
 import java.math.BigDecimal;
@@ -219,16 +202,20 @@ public class ExasolDataSource extends JDBCDataSource
 				}
 				
 				@Override
-				public void removeObject(ExasolPriorityGroup object, boolean resetFullCache) {
+				public void removeObject(@NotNull ExasolPriorityGroup object, boolean resetFullCache) {
 				}
-				
+
+				@Override
+				public void renameObject(@NotNull ExasolPriorityGroup object, @NotNull String oldName, @NotNull String newName) {
+				}
+
 				@Override
 				public boolean isFullyCached() {
 					return true;
 				}
 				
 				@Override
-				public ExasolPriorityGroup getObject(DBRProgressMonitor monitor, ExasolDataSource owner, String name) {
+				public ExasolPriorityGroup getObject(@NotNull DBRProgressMonitor monitor, @NotNull ExasolDataSource owner, @NotNull String name) {
 					return getCachedObject(name);
 				}
 				
@@ -263,7 +250,7 @@ public class ExasolDataSource extends JDBCDataSource
 				}
 				
 				@Override
-				public void cacheObject(ExasolPriorityGroup object) {
+				public void cacheObject(@NotNull ExasolPriorityGroup object) {
 					
 				}
 			};
@@ -330,10 +317,10 @@ public class ExasolDataSource extends JDBCDataSource
     }
     
     @Override
-    protected Properties getAllConnectionProperties(DBRProgressMonitor monitor, String purpose,
-    		DBPConnectionConfiguration connectionInfo) throws DBCException {
+    protected Properties getAllConnectionProperties(@NotNull DBRProgressMonitor monitor, JDBCExecutionContext context, String purpose,
+                                                    DBPConnectionConfiguration connectionInfo) throws DBCException {
     	
-    	Properties props =  super.getAllConnectionProperties(monitor, purpose, connectionInfo);
+    	Properties props =  super.getAllConnectionProperties(monitor, context, purpose, connectionInfo);
     	
     	if (addMetaProps == null)
     		addMetaProps = new Properties();
@@ -446,7 +433,7 @@ public class ExasolDataSource extends JDBCDataSource
 
 	@Override
 	protected DBPDataSourceInfo createDataSourceInfo(
-			@NotNull JDBCDatabaseMetaData metaData)
+        DBRProgressMonitor monitor, @NotNull JDBCDatabaseMetaData metaData)
 	{
 		final ExasolDataSourceInfo info = new ExasolDataSourceInfo(metaData);
 
@@ -457,7 +444,7 @@ public class ExasolDataSource extends JDBCDataSource
 
 	@Override
 	protected Map<String, String> getInternalConnectionProperties(
-        DBRProgressMonitor monitor, DBPDriver driver, String purpose, DBPConnectionConfiguration connectionInfo) throws DBCException
+		DBRProgressMonitor monitor, DBPDriver driver, JDBCExecutionContext context, String purpose, DBPConnectionConfiguration connectionInfo) throws DBCException
 	{
 		Map<String, String> props = new HashMap<>();
 		props.putAll(ExasolDataSourceProvider.getConnectionsProps());

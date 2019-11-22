@@ -16,11 +16,6 @@
  */
 package org.jkiss.dbeaver.tools.transfer.stream;
 
-import org.eclipse.swt.dnd.Clipboard;
-import org.eclipse.swt.dnd.HTMLTransfer;
-import org.eclipse.swt.dnd.TextTransfer;
-import org.eclipse.swt.dnd.Transfer;
-import org.eclipse.swt.graphics.Color;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
@@ -33,19 +28,22 @@ import org.jkiss.dbeaver.model.data.DBDDisplayFormat;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCResultSet;
 import org.jkiss.dbeaver.model.exec.DBCSession;
+import org.jkiss.dbeaver.model.meta.DBSerializable;
 import org.jkiss.dbeaver.model.runtime.DBRProcessDescriptor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.model.runtime.DBRShellCommand;
 import org.jkiss.dbeaver.model.sql.SQLDataSource;
+import org.jkiss.dbeaver.model.struct.DBSAttributeBase;
 import org.jkiss.dbeaver.model.struct.DBSDataContainer;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.rdb.DBSCatalog;
 import org.jkiss.dbeaver.model.struct.rdb.DBSSchema;
+import org.jkiss.dbeaver.model.task.DBTTask;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.runtime.serialize.DBPObjectSerializer;
 import org.jkiss.dbeaver.tools.transfer.DTUtils;
 import org.jkiss.dbeaver.tools.transfer.IDataTransferConsumer;
-import org.jkiss.dbeaver.ui.UIIcon;
-import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
@@ -53,7 +51,6 @@ import org.jkiss.utils.Base64;
 import org.jkiss.utils.IOUtils;
 
 import java.io.*;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -62,6 +59,7 @@ import java.util.zip.ZipOutputStream;
 /**
  * Stream transfer consumer
  */
+@DBSerializable("streamTransferConsumer")
 public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsumerSettings, IStreamDataExporter> {
 
     private static final Log log = Log.getLog(StreamTransferConsumer.class);
@@ -81,7 +79,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
     private IStreamDataExporter processor;
     private StreamConsumerSettings settings;
-    private DBSObject sourceObject;
+    private DBSDataContainer dataContainer;
 
     private OutputStream outputStream;
     private ZipOutputStream zipStream;
@@ -89,8 +87,8 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     private int multiFileNumber;
     private long bytesWritten = 0;
 
-    private List<DBDAttributeBinding> metaColumns;
-    private Object[] row;
+    private DBDAttributeBinding[] columnMetas;
+    private DBDAttributeBinding[] columnBindings;
     private File lobDirectory;
     private long lobCount;
     private File outputFile;
@@ -111,8 +109,12 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         }
 
         // Prepare columns
-        metaColumns = DBUtils.makeResultAttributeBindings(sourceObject instanceof DBSDataContainer ? (DBSDataContainer) sourceObject : null, resultSet);
-        row = new Object[metaColumns.size()];
+        columnMetas = DBUtils.getAttributeBindings(session, dataContainer, resultSet.getMeta());
+        if (processor instanceof IDocumentDataExporter) {
+            columnBindings = DBUtils.injectAndFilterAttributeBindings(session.getDataSource(), dataContainer, columnMetas, true);
+        } else {
+            columnBindings = DBUtils.makeLeafAttributeBindings(session, dataContainer, resultSet);
+        }
 
         if (!initialized) {
             /*// For multi-streams export header only once
@@ -134,37 +136,38 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     public void fetchRow(DBCSession session, DBCResultSet resultSet) throws DBCException {
         try {
             // Get values
-            for (int i = 0; i < metaColumns.size(); i++) {
-                DBDAttributeBinding column = metaColumns.get(i);
-                Object value;
-                try {
-                    value = column.getValueHandler().fetchValueObject(session, resultSet, column.getAttribute(), column.getOrdinalPosition());
-                } catch (DBCException e) {
-                    log.debug("Error fetching '" + column.getAttribute().getName() + "' value: " + e.getMessage());
-                    value = null;//new DBDValueError(e);
-                }
-                if (value instanceof DBDContent && !settings.isOutputClipboard()) {
-                    // Check for binary type export
-                    if (!ContentUtils.isTextContent((DBDContent) value)) {
-                        switch (settings.getLobExtractType()) {
-                            case SKIP:
-                                // Set it it null
-                                value = null;
-                                break;
-                            case INLINE:
-                                // Just pass content to exporter
-                                break;
-                            case FILES:
-                                // Save content to file and pass file reference to exporter
-                                value = saveContentToFile(session.getProgressMonitor(), (DBDContent) value);
-                                break;
+            Object[] srcRow = fetchRow(session, resultSet, columnMetas);
+            Object[] targetRow;
+            if (processor instanceof IDocumentDataExporter) {
+                targetRow = srcRow;
+            } else {
+                targetRow = new Object[columnBindings.length];
+                for (int i = 0; i < columnBindings.length; i++) {
+                    DBDAttributeBinding column = columnBindings[i];
+                    Object value = DBUtils.getAttributeValue(column, columnMetas, srcRow);
+                    if (value instanceof DBDContent && !settings.isOutputClipboard()) {
+                        // Check for binary type export
+                        if (!ContentUtils.isTextContent((DBDContent) value)) {
+                            switch (settings.getLobExtractType()) {
+                                case SKIP:
+                                    // Set it it null
+                                    value = null;
+                                    break;
+                                case INLINE:
+                                    // Just pass content to exporter
+                                    break;
+                                case FILES:
+                                    // Save content to file and pass file reference to exporter
+                                    value = saveContentToFile(session.getProgressMonitor(), (DBDContent) value);
+                                    break;
+                            }
                         }
                     }
+                    targetRow[i] = value;
                 }
-                row[i] = value;
             }
             // Export row
-            processor.exportRow(session, resultSet, row);
+            processor.exportRow(session, resultSet, targetRow);
 
             // Check for file split
             if (settings.isSplitOutFiles() && !parameters.isBinary) {
@@ -187,8 +190,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
     @Override
     public void close() {
-        metaColumns = null;
-        row = null;
+        columnBindings = null;
     }
 
     private File saveContentToFile(DBRProgressMonitor monitor, DBDContent content)
@@ -337,7 +339,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
     @Override
     public void initTransfer(DBSObject sourceObject, StreamConsumerSettings settings, TransferParameters parameters, IStreamDataExporter processor, Map<Object, Object> processorProperties) {
-        this.sourceObject = sourceObject;
+        this.dataContainer = (DBSDataContainer) sourceObject;
         this.parameters = parameters;
         this.processor = processor;
         this.settings = settings;
@@ -371,28 +373,14 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
         if (!parameters.isBinary && settings.isOutputClipboard()) {
             if (outputBuffer != null) {
-                UIUtils.syncExec(() -> {
-
-                    TextTransfer textTransfer = TextTransfer.getInstance();
-                    String strContents = outputBuffer.toString();
-                    Clipboard clipboard = new Clipboard(UIUtils.getDisplay());
-                    if (parameters.isHTML) {
-                        HTMLTransfer htmlTransfer = HTMLTransfer.getInstance();
-                        clipboard.setContents(
-                            new Object[]{strContents, strContents},
-                            new Transfer[]{textTransfer, htmlTransfer});
-                    } else {
-                        clipboard.setContents(
-                            new Object[]{strContents},
-                            new Transfer[]{textTransfer});
-                    }
-                });
+                String strContents = outputBuffer.toString();
+                DBWorkbench.getPlatformUI().copyTextToClipboard(strContents, parameters.isHTML);
                 outputBuffer = null;
             }
         } else {
             if (settings.isOpenFolderOnFinish()) {
                 // Last one
-                UIUtils.asyncExec(() -> UIUtils.launchProgram(settings.getOutputFolder()));
+                DBWorkbench.getPlatformUI().executeShellProgram(settings.getOutputFolder());
             }
         }
     }
@@ -427,12 +415,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
     @Override
     public DBPImage getObjectContainerIcon() {
-        return settings.isOutputClipboard() ? UIIcon.FILTER_CLIPBOARD : DBIcon.TREE_FOLDER;
-    }
-
-    @Override
-    public Color getObjectColor() {
-        return null;
+        return settings.isOutputClipboard() ? DBIcon.TYPE_TEXT : DBIcon.TREE_FOLDER;
     }
 
     public String getOutputFileName() {
@@ -440,9 +423,10 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         String fileName = translatePattern(
             settings.getOutputFilePattern(),
             null).trim();
-        if (parameters.orderNumber > 0 && !settings.isUseSingleFile()) {
-            fileName += "_" + String.valueOf(parameters.orderNumber + 1);
-        }
+        // Can't rememeber why did we need this. It breaks file names in case of multiple tables export (#6911)
+//        if (parameters.orderNumber > 0 && !settings.isUseSingleFile()) {
+//            fileName += "_" + String.valueOf(parameters.orderNumber + 1);
+//        }
         if (multiFileNumber > 0) {
             fileName += "_" + String.valueOf(multiFileNumber + 1);
         }
@@ -472,27 +456,27 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
                     if (settings.isUseSingleFile()) {
                         return "";
                     }
-                    return stripObjectName(sourceObject.getDataSource().getContainer().getName());
+                    return stripObjectName(dataContainer.getDataSource().getContainer().getName());
                 }
                 case VARIABLE_CATALOG: {
                     if (settings.isUseSingleFile()) {
                         return "";
                     }
-                    DBSCatalog catalog = DBUtils.getParentOfType(DBSCatalog.class, sourceObject);
+                    DBSCatalog catalog = DBUtils.getParentOfType(DBSCatalog.class, dataContainer);
                     return catalog == null ? "" : stripObjectName(catalog.getName());
                 }
                 case VARIABLE_SCHEMA: {
                     if (settings.isUseSingleFile()) {
                         return "";
                     }
-                    DBSSchema schema = DBUtils.getParentOfType(DBSSchema.class, sourceObject);
+                    DBSSchema schema = DBUtils.getParentOfType(DBSSchema.class, dataContainer);
                     return schema == null ? "" : stripObjectName(schema.getName());
                 }
                 case VARIABLE_TABLE: {
                     if (settings.isUseSingleFile()) {
                         return "export";
                     }
-                    String tableName = DTUtils.getTableName(sourceObject.getDataSource(), sourceObject, true);
+                    String tableName = DTUtils.getTableName(dataContainer.getDataSource(), dataContainer, true);
                     return stripObjectName(tableName);
                 }
                 case VARIABLE_TIMESTAMP:
@@ -500,7 +484,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
                 case VARIABLE_DATE:
                     return RuntimeUtils.getCurrentDate();
                 case VARIABLE_PROJECT: {
-                    DBPProject project = DBUtils.getObjectOwnerProject(sourceObject);
+                    DBPProject project = DBUtils.getObjectOwnerProject(dataContainer);
                     return project == null ? "" : project.getName();
                 }
                 case VARIABLE_FILE:
@@ -534,10 +518,29 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         return null;
     }
 
+    public static Object[] fetchRow(DBCSession session, DBCResultSet resultSet, DBDAttributeBinding[] attributes) throws DBCException {
+        int columnCount = resultSet.getMeta().getAttributes().size(); // Column count without virtual columns
+
+        Object[] row = new Object[columnCount];
+        for (int i = 0 ; i < columnCount; i++) {
+            DBDAttributeBinding attribute = attributes[i];
+            DBSAttributeBase metaAttr = attribute.getMetaAttribute();
+            if (metaAttr == null) {
+                continue;
+            }
+            try {
+                row[i] = attribute.getValueHandler().fetchValueObject(session, resultSet, metaAttr, attribute.getOrdinalPosition());
+            } catch (Exception e) {
+                log.debug("Error fetching '" + metaAttr.getName() + "' value: " + e.getMessage());
+            }
+        }
+        return row;
+    }
+
     private class StreamExportSite implements IStreamDataExporterSite {
         @Override
         public DBPNamedObject getSource() {
-            return sourceObject;
+            return dataContainer;
         }
 
         @Override
@@ -556,8 +559,8 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         }
 
         @Override
-        public List<DBDAttributeBinding> getAttributes() {
-            return metaColumns;
+        public DBDAttributeBinding[] getAttributes() {
+            return columnBindings;
         }
 
         @Override
@@ -589,7 +592,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
             } else {
                 try (final InputStream stream = cs.getContentStream()) {
                     exportSite.flush();
-                    final DBPDataSource dataSource = sourceObject.getDataSource();
+                    final DBPDataSource dataSource = dataContainer.getDataSource();
                     switch (settings.getLobEncoding()) {
                         case BASE64: {
                             Base64.encode(stream, cs.getContentLength(), writer);
@@ -671,4 +674,17 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         }
 
     }
+
+    public static class ObjectSerializer implements DBPObjectSerializer<DBTTask, StreamTransferConsumer> {
+
+        @Override
+        public void serializeObject(DBRProgressMonitor monitor, StreamTransferConsumer object, Map<String, Object> state) {
+        }
+
+        @Override
+        public StreamTransferConsumer deserializeObject(DBRRunnableContext runnableContext, DBTTask objectContext, Map<String, Object> state) {
+            return new StreamTransferConsumer();
+        }
+    }
+
 }

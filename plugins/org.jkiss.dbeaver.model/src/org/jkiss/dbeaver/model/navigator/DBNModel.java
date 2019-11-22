@@ -237,9 +237,10 @@ public class DBNModel implements IResourceChangeListener {
     }
 
     @Nullable
-    public DBNDataSource getDataSourceByPath(String path) {
+    public DBNDataSource getDataSourceByPath(DBPProject project, String path) {
         String dsId = getNodePath(path).first();
-        for (DBNProject projectNode : getRoot().getProjects()) {
+        DBNProject projectNode = getRoot().getProjectNode(project);
+        if (projectNode != null) {
             DBNDataSource dataSource = projectNode.getDatabases().getDataSource(dsId);
             if (dataSource != null) {
                 return dataSource;
@@ -256,10 +257,26 @@ public class DBNModel implements IResourceChangeListener {
     public DBNNode getNodeByPath(@NotNull DBRProgressMonitor monitor, @NotNull String path) throws DBException {
         final NodePath nodePath = getNodePath(path);
         if (nodePath.type == DBNNode.NodePathType.database) {
+            boolean hasLazyProjects = false;
             for (DBNProject projectNode : getRoot().getProjects()) {
+                if (!projectNode.getProject().isRegistryLoaded()) {
+                    hasLazyProjects = true;
+                    continue;
+                }
                 DBNDataSource curNode = projectNode.getDatabases().getDataSource(nodePath.first());
                 if (curNode != null) {
                     return findNodeByPath(monitor, nodePath, curNode, 1);
+                }
+            }
+            if (hasLazyProjects) {
+                // No try to search in uninitialized proejcts
+                for (DBNProject projectNode : getRoot().getProjects()) {
+                    if (!projectNode.getProject().isRegistryLoaded()) {
+                        DBNDataSource curNode = projectNode.getDatabases().getDataSource(nodePath.first());
+                        if (curNode != null) {
+                            return findNodeByPath(monitor, nodePath, curNode, 1);
+                        }
+                    }
                 }
             }
         } else {
@@ -561,7 +578,7 @@ public class DBNModel implements IResourceChangeListener {
                             } else {
                                 getRoot().addProject(projectMeta, true);
                             }
-                        } else {
+                        } else if (childDelta.getKind() != IResourceDelta.REMOVED) {
                             // Project not found - report an error
                             log.error("Project '" + childDelta.getResource().getName() + "' not found in navigator");
                         }
@@ -651,7 +668,7 @@ public class DBNModel implements IResourceChangeListener {
                 }
 
                 try {
-                    DBWorkbench.getPlatformUI().executeInUI(() -> {
+                    DBWorkbench.getPlatformUI().executeWithProgress(() -> {
                         for (int i = 0; i < realEvents.length; i++) {
                             for (INavigatorListener listener : listenersCopy) {
                                 listener.nodeChanged(realEvents[i]);

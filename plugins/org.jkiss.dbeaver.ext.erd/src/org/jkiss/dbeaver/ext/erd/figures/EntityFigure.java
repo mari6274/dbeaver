@@ -23,14 +23,18 @@ import org.eclipse.draw2d.*;
 import org.eclipse.jface.resource.ColorRegistry;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.RGB;
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.ext.erd.ERDConstants;
 import org.jkiss.dbeaver.ext.erd.editor.ERDViewStyle;
 import org.jkiss.dbeaver.ext.erd.model.ERDEntity;
 import org.jkiss.dbeaver.ext.erd.part.EntityPart;
+import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.struct.DBSEntityType;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
+import org.jkiss.dbeaver.ui.UIColors;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -68,11 +72,13 @@ public class EntityFigure extends Figure {
         if (!CommonUtils.isEmpty(entity.getAlias())) {
             entityName += " " + entity.getAlias();
         }
-        nameLabel = new EditableLabel(
-            entityName);
-        if (tableImage != null) {
-            nameLabel.setIcon(tableImage);
-        }
+        nameLabel = new EditableLabel(entityName) {
+            @Override
+            public IFigure getToolTip() {
+                return null;//createToolTip();
+            }
+        };
+        nameLabel.setIcon(tableImage);
         nameLabel.setBorder(new MarginBorder(3));
 
         Label descLabel = null;
@@ -104,17 +110,42 @@ public class EntityFigure extends Figure {
         add(keyFigure);
         add(attributeFigure);
 
-        // Tooltip doesn't make sense and just flicks around
-/*
-        Label toolTip = new Label(DBUtils.getObjectFullName(entity.getObject(), DBPEvaluationContext.UI));
-        toolTip.setIcon(tableImage);
-        setToolTip(toolTip);
-*/
         refreshColors();
     }
 
+    @NotNull
+    private IFigure createToolTip() {
+        ERDEntity entity = part.getEntity();
+        DBPDataSourceContainer dataSource = entity.getDataSource().getContainer();
+
+        Figure toolTip = new Figure();
+        toolTip.setOpaque(true);
+        //toolTip.setPreferredSize(300, 200);
+        toolTip.setBorder(getBorder());
+        toolTip.setLayoutManager(new GridLayout(1, false));
+
+        {
+            Label dsLabel = new Label(dataSource.getName());
+            dsLabel.setIcon(DBeaverIcons.getImage(dataSource.getDriver().getIcon()));
+            dsLabel.setBorder(new MarginBorder(2));
+            toolTip.add(dsLabel);
+        }
+        {
+            Label entityLabel = new Label(DBUtils.getObjectFullName(entity.getObject(), DBPEvaluationContext.UI));
+            entityLabel.setIcon(DBeaverIcons.getImage(entity.getObject().getEntityType().getIcon()));
+            entityLabel.setBorder(new MarginBorder(2));
+            toolTip.add(entityLabel);
+        }
+
+        return toolTip;
+    }
+
     protected Color getBorderColor() {
-        return UIUtils.getColorRegistry().get(ERDConstants.COLOR_ERD_LINES_FOREGROUND);
+        int dsIndex = getPart().getDiagram().getDataSourceIndex(part.getEntity().getDataSource().getContainer());
+        if (dsIndex == 0) {
+            return UIUtils.getColorRegistry().get(ERDConstants.COLOR_ERD_LINES_FOREGROUND);
+        }
+        return UIColors.getColor(dsIndex - 1);
     }
 
     public EntityPart getPart() {

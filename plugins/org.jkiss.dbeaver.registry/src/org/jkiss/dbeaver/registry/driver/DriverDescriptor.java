@@ -123,6 +123,7 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
     private boolean clientRequired;
     private boolean supportsDriverProperties;
     private boolean anonymousAccess;
+    private boolean allowsEmptyPassword;
     private boolean licenseRequired;
     private boolean customDriverLoader;
     private boolean useURLTemplate;
@@ -203,6 +204,7 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
             this.clientRequired = copyFrom.clientRequired;
             this.supportsDriverProperties = copyFrom.supportsDriverProperties;
             this.anonymousAccess = copyFrom.anonymousAccess;
+            this.allowsEmptyPassword = copyFrom.allowsEmptyPassword;
             this.licenseRequired = copyFrom.licenseRequired;
             this.customDriverLoader = copyFrom.customDriverLoader;
             this.useURLTemplate = copyFrom.customDriverLoader;
@@ -256,6 +258,7 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
         this.supportsDriverProperties = CommonUtils.getBoolean(config.getAttribute(RegistryConstants.ATTR_SUPPORTS_DRIVER_PROPERTIES), true);
         this.embedded = CommonUtils.getBoolean(config.getAttribute(RegistryConstants.ATTR_EMBEDDED));
         this.anonymousAccess = CommonUtils.getBoolean(config.getAttribute(RegistryConstants.ATTR_ANONYMOUS));
+        this.allowsEmptyPassword = CommonUtils.getBoolean("allowsEmptyPassword");
         this.licenseRequired = CommonUtils.getBoolean(config.getAttribute(RegistryConstants.ATTR_LICENSE_REQUIRED));
         this.custom = false;
         this.isLoaded = false;
@@ -643,6 +646,15 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
     }
 
     @Override
+    public boolean isAllowsEmptyPassword() {
+        return allowsEmptyPassword;
+    }
+
+    public void setAllowsEmptyPassword(boolean allowsEmptyPassword) {
+        this.allowsEmptyPassword = allowsEmptyPassword;
+    }
+
+    @Override
     public boolean isLicenseRequired() {
         return licenseRequired;
     }
@@ -763,13 +775,15 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
             }
         }
         DriverLibraryAbstract lib = DriverLibraryAbstract.createFromPath(this, fileType, path, null);
-        addDriverLibrary(lib);
+        addDriverLibrary(lib, true);
         return lib;
     }
 
-    public boolean addDriverLibrary(DBPDriverLibrary descriptor) {
+    public boolean addDriverLibrary(DBPDriverLibrary descriptor, boolean resetCache) {
         if (!libraries.contains(descriptor)) {
-            resetDriverInstance();
+            if (resetCache) {
+                resetDriverInstance();
+            }
             this.libraries.add(descriptor);
             return true;
         }

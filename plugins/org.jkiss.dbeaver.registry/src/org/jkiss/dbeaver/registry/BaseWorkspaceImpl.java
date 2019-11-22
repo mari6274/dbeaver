@@ -27,12 +27,14 @@ import org.jkiss.dbeaver.model.app.*;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.LoggingProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
+import org.jkiss.dbeaver.model.virtual.DBVModel;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.resource.DBeaverNature;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
+import org.jkiss.utils.SecurityUtils;
 
 import java.io.*;
 import java.util.*;
@@ -48,6 +50,8 @@ public abstract class BaseWorkspaceImpl implements DBPWorkspace, DBPExternalFile
 
     private static final String PROP_PROJECT_ACTIVE = "project.active";
     private static final String EXT_FILES_PROPS_STORE = "dbeaver-external-files.data";
+
+    private static final String WORKSPACE_ID = "workspace-id";
 
     private final DBPPlatform platform;
     private final IWorkspace eclipseWorkspace;
@@ -160,6 +164,7 @@ public abstract class BaseWorkspaceImpl implements DBPWorkspace, DBPExternalFile
             }
             this.projects.clear();
         }
+        DBVModel.checkGlobalCacheIsEmpty();
 
         // Dispose resource handlers
         for (ResourceHandlerDescriptor handlerDescriptor : this.handlerDescriptors) {
@@ -203,6 +208,15 @@ public abstract class BaseWorkspaceImpl implements DBPWorkspace, DBPExternalFile
     @Override
     public DBPProject getProject(IProject project) {
         return projects.get(project);
+    }
+
+    @Override
+    public DBPProject getProject(String projectName) {
+        IProject eProject = eclipseWorkspace.getRoot().getProject(projectName);
+        if (!eProject.exists()) {
+            return null;
+        }
+        return getProject(eProject);
     }
 
     @Override
@@ -287,6 +301,12 @@ public abstract class BaseWorkspaceImpl implements DBPWorkspace, DBPExternalFile
     @Override
     public File getAbsolutePath() {
         return eclipseWorkspace.getRoot().getLocation().toFile();
+    }
+
+    @NotNull
+    @Override
+    public File getMetadataFolder() {
+        return GeneralUtils.getMetadataFolder(getAbsolutePath());
     }
 
     public void save(DBRProgressMonitor monitor) throws DBException {
@@ -638,6 +658,21 @@ public abstract class BaseWorkspaceImpl implements DBPWorkspace, DBPExternalFile
                 handleResourceChange(projectMetadata, childDelta);
             }
         }
+    }
+
+    public static String readWorkspaceId() {
+        // Check workspace ID
+        Properties workspaceInfo = BaseWorkspaceImpl.readWorkspaceInfo(GeneralUtils.getMetadataFolder());
+        String workspaceId = workspaceInfo.getProperty(WORKSPACE_ID);
+        if (CommonUtils.isEmpty(workspaceId)) {
+            // Generate new UUID
+            workspaceId = "D" + Long.toString(
+                Math.abs(SecurityUtils.generateRandomLong()),
+                36).toUpperCase();
+            workspaceInfo.setProperty(WORKSPACE_ID, workspaceId);
+            BaseWorkspaceImpl.writeWorkspaceInfo(GeneralUtils.getMetadataFolder(), workspaceInfo);
+        }
+        return workspaceId;
     }
 
 }

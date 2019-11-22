@@ -18,10 +18,12 @@ package org.jkiss.dbeaver.ui.controls.resultset;
 
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBUtils;
-import org.jkiss.dbeaver.model.data.DBDAttributeBindingMeta;
+import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDDataReceiver;
+import org.jkiss.dbeaver.model.data.DBDDataReceiverInteractive;
 import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.impl.data.DBDValueError;
+import org.jkiss.dbeaver.model.struct.DBSAttributeBase;
 import org.jkiss.dbeaver.model.struct.DBSDataContainer;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
 import org.jkiss.dbeaver.ui.UIUtils;
@@ -34,18 +36,20 @@ import java.util.Map;
 /**
  * Data pump for SQL queries
  */
-class ResultSetDataReceiver implements DBDDataReceiver {
+class ResultSetDataReceiver implements DBDDataReceiver, DBDDataReceiverInteractive {
 
     private static final Log log = Log.getLog(ResultSetDataReceiver.class);
 
     private ResultSetViewer resultSetViewer;
     private int columnsCount;
-    private DBDAttributeBindingMeta[] metaColumns;
+    private DBDAttributeBinding[] metaColumns;
     private List<Object[]> rows = new ArrayList<>();
     private boolean hasMoreData;
     private boolean nextSegmentRead;
     private long offset;
     private long maxRows;
+
+    private boolean paused;
 
     // Attribute fetching errors. Collect them to avoid tons of similar error in log
     private Map<DBCAttributeMetaData, List<String>> attrErrors = new HashMap<>();
@@ -54,8 +58,7 @@ class ResultSetDataReceiver implements DBDDataReceiver {
     private int focusRow;
     private DBSDataContainer targetDataContainer;
 
-    ResultSetDataReceiver(ResultSetViewer resultSetViewer)
-    {
+    ResultSetDataReceiver(ResultSetViewer resultSetViewer) {
         this.resultSetViewer = resultSetViewer;
     }
 
@@ -71,22 +74,21 @@ class ResultSetDataReceiver implements DBDDataReceiver {
         this.nextSegmentRead = nextSegmentRead;
     }
 
-    public void setFocusRow(int focusRow) {
+    void setFocusRow(int focusRow) {
         this.focusRow = focusRow;
     }
 
-    public void setTargetDataContainer(DBSDataContainer targetDataContainer) {
+    void setTargetDataContainer(DBSDataContainer targetDataContainer) {
         this.targetDataContainer = targetDataContainer;
     }
 
-    public List<Throwable> getErrorList() {
+    List<Throwable> getErrorList() {
         return errorList;
     }
 
     @Override
     public void fetchStart(DBCSession session, final DBCResultSet resultSet, long offset, long maxRows)
-        throws DBCException
-    {
+        throws DBCException {
         this.errorList.clear();
         this.rows.clear();
         this.offset = offset;
@@ -103,40 +105,36 @@ class ResultSetDataReceiver implements DBDDataReceiver {
             columnsCount = rsAttributes.size();
 
             // Extract column info
-            metaColumns = new DBDAttributeBindingMeta[columnsCount];
-            for (int i = 0; i < columnsCount; i++) {
-                metaColumns[i] = DBUtils.getAttributeBinding(resultSetViewer.getDataContainer(), session, rsAttributes.get(i));
-            }
+            metaColumns = DBUtils.getAttributeBindings(session, getDataContainer(), metaData);
 
             resultSetViewer.setMetaData(resultSet, metaColumns);
         }
     }
 
     @Override
-    public void fetchRow(DBCSession session, DBCResultSet resultSet)
-        throws DBCException
-    {
+    public void fetchRow(DBCSession session, DBCResultSet resultSet) {
         Object[] row = new Object[columnsCount];
         for (int i = 0; i < columnsCount; i++) {
             try {
+                DBSAttributeBase metaAttribute = metaColumns[i].getAttribute();
+                if (metaAttribute == null) {
+                    continue;
+                }
                 row[i] = metaColumns[i].getValueHandler().fetchValueObject(
                     session,
                     resultSet,
-                    metaColumns[i].getAttribute(),
+                    metaAttribute,
                     metaColumns[i].getOrdinalPosition());
-            }
-            catch (Throwable e) {
+            } catch (Throwable e) {
                 // Do not reports the same error multiple times
                 // There are a lot of error could occur during result set fetch
                 // We report certain error only once
 
                 row[i] = new DBDValueError(e);
 
-                List<String> attrErrors = this.attrErrors.get(metaColumns[i].getMetaAttribute());
-                if (attrErrors == null) {
-                    attrErrors = new ArrayList<>();
-                    this.attrErrors.put(metaColumns[i].getMetaAttribute(), attrErrors);
-                }
+                List<String> attrErrors = this.attrErrors.computeIfAbsent(
+                    metaColumns[i].getMetaAttribute(),
+                    k -> new ArrayList<>());
                 String errMessage = e.getClass().getName();
                 if (!errMessage.startsWith("java.lang.")) {
                     errMessage += ":" + e.getMessage();
@@ -152,14 +150,12 @@ class ResultSetDataReceiver implements DBDDataReceiver {
     }
 
     @Override
-    public void fetchEnd(DBCSession session, final DBCResultSet resultSet)
-        throws DBCException
-    {
+    public void fetchEnd(DBCSession session, final DBCResultSet resultSet) {
         if (!nextSegmentRead) {
             try {
                 // Read locators' metadata
                 DBSEntity entity = null;
-                DBSDataContainer dataContainer = targetDataContainer != null ? targetDataContainer : resultSetViewer.getDataContainer();
+                DBSDataContainer dataContainer = getDataContainer();
                 if (dataContainer instanceof DBSEntity) {
                     entity = (DBSEntity) dataContainer;
                 }
@@ -181,12 +177,8 @@ class ResultSetDataReceiver implements DBDDataReceiver {
                 resultSetViewer.getActivePresentation().refreshData(true, false, !metadataChanged);
                 resultSetViewer.updateStatusMessage();
             } else {
-                if (resultSetViewer.getDataContainer().getDataSource().getContainer().getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_REREAD_ON_SCROLLING)) {
-                    ResultSetRow currentRow = resultSetViewer.getCurrentRow();
-                    resultSetViewer.setData(tmpRows, currentRow == null ? 0 : currentRow.getVisualNumber());
-                } else {
-                    resultSetViewer.appendData(tmpRows);
-                }
+                boolean resetOldRows = getDataContainer().getDataSource().getContainer().getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_REREAD_ON_SCROLLING);
+                resultSetViewer.appendData(tmpRows, resetOldRows);
                 resultSetViewer.getActivePresentation().refreshData(false, true, true);
             }
             // Check for more data
@@ -194,13 +186,26 @@ class ResultSetDataReceiver implements DBDDataReceiver {
         });
     }
 
+    private DBSDataContainer getDataContainer() {
+        return targetDataContainer != null ? targetDataContainer : resultSetViewer.getDataContainer();
+    }
+
     @Override
-    public void close()
-    {
+    public void close() {
         nextSegmentRead = false;
 
         attrErrors.clear();
         rows = new ArrayList<>();
+    }
+
+    @Override
+    public boolean isDataReceivePaused() {
+        return paused;
+    }
+
+    @Override
+    public void setDataReceivePaused(boolean paused) {
+        this.paused = paused;
     }
 
 }

@@ -42,8 +42,8 @@ import org.jkiss.dbeaver.model.struct.DBSEntityAssociation;
 import org.jkiss.dbeaver.model.struct.DBSEntityReferrer;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.resultset.ResultSetRow;
+import org.jkiss.dbeaver.ui.controls.resultset.ResultSetUtils;
 import org.jkiss.dbeaver.ui.controls.resultset.ResultSetViewer;
-import org.jkiss.dbeaver.ui.data.editors.ReferenceValueEditor;
 import org.jkiss.dbeaver.ui.editors.object.struct.EditDictionaryPage;
 
 public class FilterValueEditPopup extends Dialog {
@@ -85,7 +85,7 @@ public class FilterValueEditPopup extends Dialog {
     {
         getShell().setText("Filter by '" + filter.attr.getFullyQualifiedName(DBPEvaluationContext.UI) + "'");
 
-        DBSEntityReferrer descReferrer = ReferenceValueEditor.getEnumerableConstraint(filter.attr);
+        DBSEntityReferrer descReferrer = ResultSetUtils.getEnumerableConstraint(filter.attr);
 
         Composite group = (Composite) super.createDialogArea(parent);
         {
@@ -99,7 +99,7 @@ public class FilterValueEditPopup extends Dialog {
                     public void widgetSelected(SelectionEvent e) {
                         EditDictionaryPage editDictionaryPage = new EditDictionaryPage(((DBSEntityAssociation) descReferrer).getAssociatedEntity());
                         if (editDictionaryPage.edit(parent.getShell())) {
-                            filter.loadValues();
+                            filter.loadValues(null);
                         }
                     }
                 });
@@ -137,11 +137,6 @@ public class FilterValueEditPopup extends Dialog {
                 }
             });
         }
-
-        // Resize the column to fit the contents
-        UIUtils.asyncExec(() -> {
-            UIUtils.packColumns(table, true);
-        });
 
         FocusAdapter focusListener = new FocusAdapter() {
             @Override
@@ -183,8 +178,9 @@ public class FilterValueEditPopup extends Dialog {
             table.setFocus();
         }
         filter.filterPattern = null;
-        filter.loadValues();
-
+        filter.loadValues(() -> {
+            UIUtils.asyncExec(() -> UIUtils.packColumns(table, false));
+        });
 
         return tableComposite;
     }

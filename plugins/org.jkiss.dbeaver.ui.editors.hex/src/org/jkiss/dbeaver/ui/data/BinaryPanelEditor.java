@@ -25,8 +25,8 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBValueFormatting;
 import org.jkiss.dbeaver.model.data.DBDContent;
 import org.jkiss.dbeaver.model.data.DBDContentStorage;
+import org.jkiss.dbeaver.model.data.storage.BytesContentStorage;
 import org.jkiss.dbeaver.model.exec.DBCException;
-import org.jkiss.dbeaver.model.impl.BytesContentStorage;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceListener;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -113,15 +113,17 @@ public class BinaryPanelEditor implements IStreamValueEditor<HexEditControl> {
     public void extractEditorValue(@NotNull DBRProgressMonitor monitor, @NotNull HexEditControl control, @NotNull DBDContent value) throws DBException
     {
         BinaryContent binaryContent = control.getContent();
-        ByteBuffer buffer = ByteBuffer.allocate((int) binaryContent.length());
-        try {
-            binaryContent.get(buffer, 0);
-        } catch (IOException e) {
-            log.error(e);
+        if (binaryContent != null) {
+            ByteBuffer buffer = ByteBuffer.allocate((int) binaryContent.length());
+            try {
+                binaryContent.get(buffer, 0);
+            } catch (IOException e) {
+                log.error(e);
+            }
+            value.updateContents(
+                monitor,
+                new BytesContentStorage(buffer.array(), GeneralUtils.getDefaultFileEncoding()));
         }
-        value.updateContents(
-            monitor,
-            new BytesContentStorage(buffer.array(), GeneralUtils.getDefaultFileEncoding()));
     }
 
     @Override

@@ -18,9 +18,11 @@ package org.jkiss.dbeaver.ui.controls.resultset.panel.grouping;
 
 import org.eclipse.swt.widgets.Composite;
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBCStatistics;
@@ -76,11 +78,19 @@ public class GroupingResultsContainer implements IResultSetContainer {
         return groupFunctions;
     }
 
+    @Nullable
+    @Override
+    public DBPProject getProject() {
+        DBSDataContainer dataContainer = getDataContainer();
+        return dataContainer == null || dataContainer.getDataSource() == null ? null : dataContainer.getDataSource().getContainer().getProject();
+    }
+
     @Override
     public DBCExecutionContext getExecutionContext() {
         return presentation.getController().getExecutionContext();
     }
 
+    @NotNull
     @Override
     public IResultSetController getResultSetController() {
         return groupingViewer;
@@ -173,7 +183,7 @@ public class GroupingResultsContainer implements IResultSetContainer {
 
     public void rebuildGrouping() throws DBException {
         if (groupAttributes.isEmpty() || groupFunctions.isEmpty()) {
-            getResultSetController().showEmptyPresentation();
+            groupingViewer.showEmptyPresentation();
             return;
         }
         DBCStatistics statistics = presentation.getController().getModel().getStatistics();
@@ -181,6 +191,9 @@ public class GroupingResultsContainer implements IResultSetContainer {
             throw new DBException("No main query - can't perform grouping");
         }
         DBPDataSource dataSource = dataContainer.getDataSource();
+        if (dataSource == null) {
+            throw new DBException("No active datasource");
+        }
         SQLDialect dialect = SQLUtils.getDialectFromDataSource(dataSource);
         SQLSyntaxManager syntaxManager = new SQLSyntaxManager();
         syntaxManager.init(dialect, presentation.getController().getPreferenceStore());
@@ -203,7 +216,7 @@ public class GroupingResultsContainer implements IResultSetContainer {
         sql.append("SELECT ");
         for (int i = 0; i < groupAttributes.size(); i++) {
             if (i > 0) sql.append(", ");
-            sql.append(DBUtils.getQuotedIdentifier(getDataContainer().getDataSource(), groupAttributes.get(i)));
+            sql.append(DBUtils.getQuotedIdentifier(dataSource, groupAttributes.get(i)));
         }
         for (String func : groupFunctions) {
             sql.append(", ").append(func);
@@ -215,7 +228,7 @@ public class GroupingResultsContainer implements IResultSetContainer {
         sql.append("\nGROUP BY ");
         for (int i = 0; i < groupAttributes.size(); i++) {
             if (i > 0) sql.append(", ");
-            sql.append(groupAttributes.get(i));
+            sql.append(DBUtils.getQuotedIdentifier(dataSource, groupAttributes.get(i)));
         }
         boolean isDefaultGrouping = groupFunctions.size() == 1 && groupFunctions.get(0).equals(DEFAULT_FUNCTION);
 
@@ -225,16 +238,26 @@ public class GroupingResultsContainer implements IResultSetContainer {
         }
 
         dataContainer.setGroupingQuery(sql.toString());
-        DBDDataFilter dataFilter = new DBDDataFilter();
+        DBDDataFilter dataFilter;
+        if (presentation.getController().getModel().isMetadataChanged()) {
+            dataFilter = new DBDDataFilter();
+        } else {
+            dataFilter = new DBDDataFilter(groupingViewer.getModel().getDataFilter());
+        }
 
         String defaultSorting = dataSource.getContainer().getPreferenceStore().getString(ResultSetPreferences.RS_GROUPING_DEFAULT_SORTING);
         if (!CommonUtils.isEmpty(defaultSorting) && isDefaultGrouping) {
             if (dialect.supportsOrderByIndex()) {
                 // By default sort by count in desc order
                 int countPosition = groupAttributes.size() + 1;
-                dataFilter.setOrder(String.valueOf(countPosition) + " " + defaultSorting);
+                StringBuilder orderBy = new StringBuilder();
+                orderBy.append(countPosition).append(" ").append(defaultSorting);
+                for (int i = 0; i < groupAttributes.size(); i++) {
+                    orderBy.append(",").append(i + 1);
+                }
+                dataFilter.setOrder(orderBy.toString());
             } else {
-                dataFilter.setOrder(groupFunctions.get(groupFunctions.size() - 1));
+                dataFilter.setOrder(groupFunctions.get(groupFunctions.size() - 1) + " " + defaultSorting);
             }
         }
         groupingViewer.setDataFilter(dataFilter, true);

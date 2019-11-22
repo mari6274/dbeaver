@@ -16,11 +16,14 @@
  */
 package org.jkiss.dbeaver.ui.dialogs;
 
+import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.wizard.IWizard;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.WizardDialog;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.ISelectionService;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.IWorkbenchWizard;
@@ -37,6 +40,9 @@ public class ActiveWizardDialog extends WizardDialog
 
     private Set<String> resizedShells = new HashSet<>();
     private boolean adaptContainerSizeToPages = false;
+
+    private String finishButtonLabel = IDialogConstants.FINISH_LABEL;
+    private String cancelButtonLabel = IDialogConstants.CANCEL_LABEL;
 
     public ActiveWizardDialog(IWorkbenchWindow window, IWizard wizard)
     {
@@ -86,4 +92,21 @@ public class ActiveWizardDialog extends WizardDialog
         }
     }
 
+    @Override
+    protected void createButtonsForButtonBar(Composite parent) {
+        super.createButtonsForButtonBar(parent);
+
+        Button cancelButton = getButton(IDialogConstants.CANCEL_ID);
+        cancelButton.setText(cancelButtonLabel);
+        Button finishButton = getButton(IDialogConstants.FINISH_ID);
+        finishButton.setText(finishButtonLabel);
+    }
+
+    public void setFinishButtonLabel(String finishButtonLabel) {
+        this.finishButtonLabel = finishButtonLabel;
+    }
+
+    public void setCancelButtonLabel(String cancelButtonLabel) {
+        this.cancelButtonLabel = cancelButtonLabel;
+    }
 }

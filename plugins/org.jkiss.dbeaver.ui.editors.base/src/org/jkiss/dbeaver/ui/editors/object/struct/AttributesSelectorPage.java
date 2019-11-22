@@ -155,8 +155,8 @@ public abstract class AttributesSelectorPage extends BaseObjectEditPage {
         columnsTable = new Table(columnsGroup, SWT.BORDER | SWT.SINGLE | SWT.FULL_SELECTION | SWT.CHECK);
         columnsTable.setHeaderVisible(true);
         GridData gd = new GridData(GridData.FILL_BOTH);
-        //gd.widthHint = 300;
-        //gd.heightHint = 200;
+        gd.minimumWidth = 300;
+        gd.minimumHeight = 150;
         columnsTable.setLayoutData(gd);
         columnsTable.addSelectionListener(new SelectionAdapter() {
             @Override
@@ -250,7 +250,7 @@ public abstract class AttributesSelectorPage extends BaseObjectEditPage {
             protected IStatus run(DBRProgressMonitor monitor) {
                 try {
                     for (DBSEntityAttribute attr : CommonUtils.safeCollection(entity.getAttributes(monitor))) {
-                        if (isShowHiddenAttributes() || !DBUtils.isHiddenObject(attr)) {
+                        if (isShowHiddenAttributes() || !DBUtils.isHiddenObject(attr) || DBUtils.isRowIdAttribute(attr)) {
                             attrList.add(attr);
                         }
                     }

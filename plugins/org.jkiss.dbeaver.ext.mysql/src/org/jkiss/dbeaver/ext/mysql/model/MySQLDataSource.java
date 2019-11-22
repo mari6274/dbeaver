@@ -36,7 +36,10 @@ import org.jkiss.dbeaver.model.exec.jdbc.*;
 import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlanner;
 import org.jkiss.dbeaver.model.gis.GisConstants;
 import org.jkiss.dbeaver.model.gis.SpatialDataProvider;
-import org.jkiss.dbeaver.model.impl.jdbc.*;
+import org.jkiss.dbeaver.model.impl.jdbc.JDBCConstants;
+import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
+import org.jkiss.dbeaver.model.impl.jdbc.JDBCExecutionContext;
+import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCBasicDataTypeCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCDataType;
@@ -95,7 +98,7 @@ public class MySQLDataSource extends JDBCDataSource implements DBSObjectSelector
     }
 
     @Override
-    protected Map<String, String> getInternalConnectionProperties(DBRProgressMonitor monitor, DBPDriver driver, String purpose, DBPConnectionConfiguration connectionInfo)
+    protected Map<String, String> getInternalConnectionProperties(DBRProgressMonitor monitor, DBPDriver driver, JDBCExecutionContext context, String purpose, DBPConnectionConfiguration connectionInfo)
         throws DBCException {
         Map<String, String> props = new LinkedHashMap<>(MySQLDataSourceProvider.getConnectionsProps());
         final DBWHandlerConfiguration sslConfig = getContainer().getActualConnectionConfiguration().getHandler(MySQLConstants.HANDLER_SSL);
@@ -138,7 +141,7 @@ public class MySQLDataSource extends JDBCDataSource implements DBSObjectSelector
     }
 
     @Override
-    protected DBPDataSourceInfo createDataSourceInfo(@NotNull JDBCDatabaseMetaData metaData) {
+    protected DBPDataSourceInfo createDataSourceInfo(DBRProgressMonitor monitor, @NotNull JDBCDatabaseMetaData metaData) {
         return new MySQLDataSourceInfo(metaData);
     }
 
@@ -147,12 +150,12 @@ public class MySQLDataSource extends JDBCDataSource implements DBSObjectSelector
         final DBACertificateStorage securityManager = getContainer().getPlatform().getCertificateStorage();
 
         props.put("useSSL", "true");
-        props.put("verifyServerCertificate", String.valueOf(CommonUtils.toBoolean(sslConfig.getProperties().get(MySQLConstants.PROP_VERIFY_SERVER_SERT))));
-        props.put("requireSSL", String.valueOf(CommonUtils.toBoolean(sslConfig.getProperties().get(MySQLConstants.PROP_REQUIRE_SSL))));
+        props.put("verifyServerCertificate", sslConfig.getStringProperty(MySQLConstants.PROP_VERIFY_SERVER_SERT));
+        props.put("requireSSL", sslConfig.getStringProperty(MySQLConstants.PROP_REQUIRE_SSL));
 
-        final String caCertProp = sslConfig.getProperties().get(MySQLConstants.PROP_SSL_CA_CERT);
-        final String clientCertProp = sslConfig.getProperties().get(MySQLConstants.PROP_SSL_CLIENT_CERT);
-        final String clientCertKeyProp = sslConfig.getProperties().get(MySQLConstants.PROP_SSL_CLIENT_KEY);
+        final String caCertProp = sslConfig.getStringProperty(MySQLConstants.PROP_SSL_CA_CERT);
+        final String clientCertProp = sslConfig.getStringProperty(MySQLConstants.PROP_SSL_CLIENT_CERT);
+        final String clientCertKeyProp = sslConfig.getStringProperty(MySQLConstants.PROP_SSL_CLIENT_KEY);
 
         {
             // Trust keystore
@@ -168,16 +171,16 @@ public class MySQLDataSource extends JDBCDataSource implements DBSObjectSelector
             props.put("clientCertificateKeyStoreUrl", ksPath);
             props.put("trustCertificateKeyStoreUrl", ksPath);
         }
-        final String cipherSuites = sslConfig.getProperties().get(MySQLConstants.PROP_SSL_CIPHER_SUITES);
+        final String cipherSuites = sslConfig.getStringProperty(MySQLConstants.PROP_SSL_CIPHER_SUITES);
         if (!CommonUtils.isEmpty(cipherSuites)) {
             props.put("enabledSSLCipherSuites;", cipherSuites);
         }
-        final boolean retrievePublicKey = CommonUtils.getBoolean(sslConfig.getProperties().get(MySQLConstants.PROP_SSL_PUBLIC_KEY_RETRIEVE), false);
+        final boolean retrievePublicKey = sslConfig.getBooleanProperty(MySQLConstants.PROP_SSL_PUBLIC_KEY_RETRIEVE);
         if (retrievePublicKey) {
             props.put("allowPublicKeyRetrieval", "true");
         }
 
-        if (CommonUtils.getBoolean(sslConfig.getProperties().get(MySQLConstants.PROP_SSL_DEBUG), false)) {
+        if (sslConfig.getBooleanProperty(MySQLConstants.PROP_SSL_DEBUG)) {
             System.setProperty("javax.net.debug", "all");
         }
     }
@@ -404,13 +407,13 @@ public class MySQLDataSource extends JDBCDataSource implements DBSObjectSelector
     }
 
     @Override
-    protected Connection openConnection(@NotNull DBRProgressMonitor monitor, JDBCRemoteInstance remoteInstance, @NotNull String purpose) throws DBCException {
-        Connection mysqlConnection = super.openConnection(monitor, remoteInstance, purpose);
+    protected Connection openConnection(@NotNull DBRProgressMonitor monitor, @Nullable JDBCExecutionContext context, @NotNull String purpose) throws DBCException {
+        Connection mysqlConnection = super.openConnection(monitor, context, purpose);
 
         if (!getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_CLIENT_NAME_DISABLE)) {
             // Provide client info
             try {
-                mysqlConnection.setClientInfo(JDBCConstants.APPLICATION_NAME_CLIENT_PROPERTY, DBUtils.getClientApplicationName(getContainer(), purpose));
+                mysqlConnection.setClientInfo(JDBCConstants.APPLICATION_NAME_CLIENT_PROPERTY, DBUtils.getClientApplicationName(getContainer(), context, purpose));
             } catch (Throwable e) {
                 // just ignore
                 log.debug(e);
@@ -611,7 +614,7 @@ public class MySQLDataSource extends JDBCDataSource implements DBSObjectSelector
                 }
                 @Override
                 public int getDefaultSRID() {
-                    return GisConstants.DEFAULT_SRID;
+                    return GisConstants.SRID_4326;
                 }
             });
         } else if (adapter == DBCQueryPlanner.class) {

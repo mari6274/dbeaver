@@ -46,12 +46,16 @@ public interface DBPWorkspace
     File getAbsolutePath();
 
     @NotNull
+    File getMetadataFolder();
+
+    @NotNull
     IWorkspace getEclipseWorkspace();
 
     List<DBPProject> getProjects();
     DBPProject getActiveProject();
     void setActiveProject(DBPProject project);
     DBPProject getProject(IProject project);
+    DBPProject getProject(String projectName);
 
     /**
      * Reloads workspace contents. Creates missing projects, removes unexistent projects
@@ -75,4 +79,5 @@ public interface DBPWorkspace
     DBPDataSourceRegistry getDefaultDataSourceRegistry();
 
     void dispose();
+
 }

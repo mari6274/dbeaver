@@ -27,7 +27,9 @@ import java.util.Collection;
 /**
  * Database external user interface utility.
  * Usually utilizes external native software to perform specific database tasks.
+ * This interface is deprecated. All tools functionality should be replaced with tasks.
  */
+@Deprecated
 public interface IUserInterfaceTool {
 
     void execute(IWorkbenchWindow window, IWorkbenchPart activePart, Collection<DBSObject> objects)

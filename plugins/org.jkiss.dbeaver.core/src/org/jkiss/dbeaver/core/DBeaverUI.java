@@ -21,6 +21,10 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.HTMLTransfer;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPart;
@@ -35,14 +39,13 @@ import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPErrorAssistant;
-import org.jkiss.dbeaver.model.connection.DBPAuthInfo;
 import org.jkiss.dbeaver.model.access.DBAPasswordChangeInfo;
+import org.jkiss.dbeaver.model.connection.DBPAuthInfo;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverDependencies;
 import org.jkiss.dbeaver.model.exec.DBExecUtils;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
-import org.jkiss.dbeaver.model.runtime.DBRProcessDescriptor;
-import org.jkiss.dbeaver.model.runtime.DBRProcessListener;
+import org.jkiss.dbeaver.model.runtime.*;
 import org.jkiss.dbeaver.model.runtime.load.ILoadService;
 import org.jkiss.dbeaver.model.runtime.load.ILoadVisualizer;
 import org.jkiss.dbeaver.model.struct.DBSObject;
@@ -65,7 +68,9 @@ import org.jkiss.dbeaver.ui.navigator.dialogs.BrowseObjectDialog;
 import org.jkiss.dbeaver.ui.views.process.ProcessPropertyTester;
 import org.jkiss.dbeaver.ui.views.process.ShellProcessView;
 import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.utils.CommonUtils;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -308,12 +313,12 @@ public class DBeaverUI implements DBPPlatformUI {
 
     @Override
     public void openEntityEditor(@NotNull DBSObject object) {
-        NavigatorHandlerObjectOpen.openEntityEditor(object);
+        UIUtils.syncExec(() -> NavigatorHandlerObjectOpen.openEntityEditor(object));
     }
 
     @Override
     public void openEntityEditor(@NotNull DBNNode selectedNode, String defaultPageId) {
-        NavigatorHandlerObjectOpen.openEntityEditor(selectedNode, defaultPageId, UIUtils.getActiveWorkbenchWindow());
+        UIUtils.syncExec(() -> NavigatorHandlerObjectOpen.openEntityEditor(selectedNode, defaultPageId, UIUtils.getActiveWorkbenchWindow()));
     }
 
     @Override
@@ -361,8 +366,16 @@ public class DBeaverUI implements DBPPlatformUI {
     }
 
     @Override
-    public void executeInUI(@NotNull Runnable runnable) {
+    public void executeWithProgress(@NotNull Runnable runnable) {
         UIUtils.syncExec(runnable);
+    }
+
+    @Override
+    public void executeWithProgress(@NotNull DBRRunnableWithProgress runnable) throws InvocationTargetException, InterruptedException {
+        // FIXME: we need to run with progress service bu we can't change active control focus
+        // Otherwise it breaks soem functions (e.g. data editor value save as it handles focus events).
+        // so we can use runInProgressServie function
+        runnable.run(new VoidProgressMonitor());
     }
 
     @NotNull
@@ -376,6 +389,33 @@ public class DBeaverUI implements DBPPlatformUI {
         if (part instanceof IWorkbenchPart) {
             UIUtils.asyncExec(() -> DBeaverUI.getInstance().refreshPartContexts((IWorkbenchPart)part));
         }
+    }
+
+    @Override
+    public void copyTextToClipboard(String text, boolean htmlFormat) {
+        if (CommonUtils.isEmpty(text)) {
+            return;
+        }
+        UIUtils.syncExec(() -> {
+
+            TextTransfer textTransfer = TextTransfer.getInstance();
+            Clipboard clipboard = new Clipboard(UIUtils.getDisplay());
+            if (htmlFormat) {
+                HTMLTransfer htmlTransfer = HTMLTransfer.getInstance();
+                clipboard.setContents(
+                    new Object[]{text, text},
+                    new Transfer[]{textTransfer, htmlTransfer});
+            } else {
+                clipboard.setContents(
+                    new Object[]{text},
+                    new Transfer[]{textTransfer});
+            }
+        });
+    }
+
+    @Override
+    public void executeShellProgram(String shellCommand) {
+        UIUtils.asyncExec(() -> UIUtils.launchProgram(shellCommand));
     }
 
 }

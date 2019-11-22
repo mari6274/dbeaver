@@ -42,7 +42,9 @@ import org.jkiss.dbeaver.model.exec.DBCAttributeMetaData;
 import org.jkiss.dbeaver.model.exec.DBCEntityMetaData;
 import org.jkiss.utils.CommonUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -136,7 +138,7 @@ public class SQLQuery implements SQLScriptElement {
                     PlainSelect plainSelect = (PlainSelect) selectBody;
                     if (plainSelect.getFromItem() instanceof Table &&
                         CommonUtils.isEmpty(plainSelect.getJoins()) &&
-                        CommonUtils.isEmpty(plainSelect.getGroupByColumnReferences()) &&
+                        (plainSelect.getGroupBy() == null || CommonUtils.isEmpty(plainSelect.getGroupBy().getGroupByExpressions())) &&
                         CommonUtils.isEmpty(plainSelect.getIntoTables())) {
                         fillSingleSource((Table) plainSelect.getFromItem());
                     }
@@ -154,9 +156,9 @@ public class SQLQuery implements SQLScriptElement {
                 fillSingleSource(((Insert) statement).getTable());
             } else if (statement instanceof Update) {
                 type = SQLQueryType.UPDATE;
-                List<Table> tables = ((Update) statement).getTables();
-                if (tables != null && tables.size() == 1) {
-                    fillSingleSource(tables.get(0));
+                Table table = ((Update) statement).getTable();
+                if (table != null) {
+                    fillSingleSource(table);
                 }
             } else if (statement instanceof Delete) {
                 type = SQLQueryType.DELETE;
@@ -211,8 +213,7 @@ public class SQLQuery implements SQLScriptElement {
         parseQuery();
         if (statement instanceof Select && ((Select) statement).getSelectBody() instanceof PlainSelect) {
             PlainSelect selectBody = (PlainSelect) ((Select) statement).getSelectBody();
-            return selectBody.getFromItem() != null &&
-                CommonUtils.isEmpty(selectBody.getIntoTables()) &&
+            return CommonUtils.isEmpty(selectBody.getIntoTables()) &&
                 selectBody.getLimit() == null &&
                 selectBody.getTop() == null &&
                 !selectBody.isForUpdate();
@@ -239,6 +240,10 @@ public class SQLQuery implements SQLScriptElement {
     @NotNull
     public String getOriginalText() {
         return originalText;
+    }
+
+    public void setOriginalText(@NotNull String originalText) {
+        this.originalText = originalText;
     }
 
     @NotNull

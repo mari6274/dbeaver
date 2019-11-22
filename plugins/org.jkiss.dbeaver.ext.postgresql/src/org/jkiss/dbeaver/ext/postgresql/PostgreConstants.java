@@ -55,8 +55,8 @@ public class PostgreConstants {
     public static final String OPTION_DDL_SHOW_FULL = "pg.ddl.show.full";
 
     public static final DBSObjectState STATE_UNAVAILABLE = new DBSObjectState("Unavailable", DBIcon.OVER_EXTERNAL);
-    public static final DBSEntityConstraintType CONSTRAINT_TRIGGER = new DBSEntityConstraintType("trigger", "TRIGGER", "Trigger constraint", false, false, false); //$NON-NLS-1$
-    public static final DBSEntityConstraintType CONSTRAINT_EXCLUSIVE = new DBSEntityConstraintType("exclusive", "EXCLUSIVE", "Exclusive constraint", false, false, false); //$NON-NLS-1$
+    public static final DBSEntityConstraintType CONSTRAINT_TRIGGER = new DBSEntityConstraintType("trigger", "TRIGGER", "Trigger constraint", false, false, false, false); //$NON-NLS-1$
+    public static final DBSEntityConstraintType CONSTRAINT_EXCLUSIVE = new DBSEntityConstraintType("exclusive", "EXCLUSIVE", "Exclusive constraint", false, false, false, false); //$NON-NLS-1$
 
     public static final String INFO_SCHEMA_NAME = "information_schema";
     public static final String SYSTEM_SCHEMA_PREFIX = "pg_";
@@ -88,7 +88,7 @@ public class PostgreConstants {
     public static final String HANDLER_SSL = "postgre_ssl";
 
     /**
-     * @see https://www.postgresql.org/docs/9.2/static/errcodes-appendix.html
+     * @see [https://www.postgresql.org/docs/9.2/static/errcodes-appendix.html]
      */
     public static final String EC_PERMISSION_DENIED = "42501"; //$NON-NLS-1$
     public static final String EC_QUERY_CANCELED = "57014"; //$NON-NLS-1$
@@ -111,6 +111,8 @@ public class PostgreConstants {
     public static final String TYPE_FLOAT8 = "float8";
 
     public static final String ERROR_ADMIN_SHUTDOWN = "57P01";
+    public static final String ERROR_TRANSACTION_ABORTED = "25P02";
+
     public static final String PSQL_EXCEPTION_CLASS_NAME = "org.postgresql.util.PSQLException";
     public static final String COLLATION_DEFAULT = "default";
 

@@ -32,17 +32,22 @@ import org.jkiss.dbeaver.model.impl.data.DBDValueError;
 import org.jkiss.dbeaver.model.impl.data.DefaultValueHandler;
 import org.jkiss.dbeaver.model.impl.sql.BasicSQLDialect;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.runtime.DBRRunnableWithResult;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.sql.*;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.*;
+import org.jkiss.dbeaver.model.virtual.DBVEntity;
+import org.jkiss.dbeaver.model.virtual.DBVEntityAttribute;
 import org.jkiss.dbeaver.model.virtual.DBVUtils;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 /**
@@ -51,6 +56,7 @@ import java.util.*;
 public final class DBUtils {
 
     private static final Log log = Log.getLog(DBUtils.class);
+    private static final int MAX_SAMPLE_ROWS = 1000;
 
     @NotNull
     public static String getQuotedIdentifier(@NotNull DBPNamedObject object)
@@ -92,7 +98,7 @@ public final class DBUtils {
     @NotNull
     public static String getUnQuotedIdentifier(@NotNull String str, String[][] quoteStrings) {
         if (ArrayUtils.isEmpty(quoteStrings)) {
-            quoteStrings = BasicSQLDialect.DEFAULT_QUOTE_STRINGS;
+            quoteStrings = BasicSQLDialect.DEFAULT_IDENTIFIER_QUOTES;
         }
         for (int i = 0; i < quoteStrings.length; i++) {
             str = getUnQuotedIdentifier(str, quoteStrings[i][0], quoteStrings[i][1]);
@@ -191,7 +197,7 @@ public final class DBUtils {
     }
 
     @NotNull
-    public static String getFullQualifiedName(@NotNull DBPDataSource dataSource, @NotNull DBPNamedObject ... path)
+    public static String getFullQualifiedName(@Nullable DBPDataSource dataSource, @NotNull DBPNamedObject ... path)
     {
         StringBuilder name = new StringBuilder(20 * path.length);
         if (!(dataSource instanceof SQLDataSource)) {
@@ -613,22 +619,73 @@ public final class DBUtils {
     }
 
     @NotNull
-    public static DBDAttributeBindingMeta getAttributeBinding(DBSDataContainer dataContainer, @NotNull DBCSession session, @NotNull DBCAttributeMetaData attributeMeta)
+    public static DBDAttributeBindingMeta getAttributeBinding(@NotNull DBSDataContainer dataContainer, @NotNull DBCSession session, @NotNull DBCAttributeMetaData attributeMeta)
     {
         return new DBDAttributeBindingMeta(dataContainer, session, attributeMeta);
     }
 
-    public static List<DBDAttributeBinding> makeResultAttributeBindings(DBSDataContainer dataContainer, DBCResultSet resultSet) throws DBCException {
+    @NotNull
+    public static DBDAttributeBinding[] getAttributeBindings(@NotNull DBCSession session, @NotNull DBSDataContainer dataContainer, @NotNull DBCResultSetMetaData metaData) {
+        List<DBCAttributeMetaData> metaAttributes = metaData.getAttributes();
+        int columnsCount = metaAttributes.size();
+        DBDAttributeBinding[] bindings = new DBDAttributeBinding[columnsCount];
+        for (int i = 0; i < columnsCount; i++) {
+            bindings[i] = DBUtils.getAttributeBinding(dataContainer, session, metaAttributes.get(i));
+        }
+        return injectAndFilterAttributeBindings(session.getDataSource(), dataContainer, bindings, false);
+    }
+
+    public static DBDAttributeBinding[] injectAndFilterAttributeBindings(@NotNull DBPDataSource dataSource, @NotNull DBSDataContainer dataContainer, DBDAttributeBinding[] bindings, boolean filterAttributes) {
+        // Add custom attributes
+        DBVEntity vEntity = DBVUtils.getVirtualEntity(dataContainer, false);
+        if (vEntity != null) {
+            List<DBVEntityAttribute> customAttributes = DBVUtils.getCustomAttributes(vEntity);
+            if (!CommonUtils.isEmpty(customAttributes)) {
+                DBDAttributeBinding[] customBindings = new DBDAttributeBinding[customAttributes.size()];
+                for (int i = 0; i < customAttributes.size(); i++) {
+                    customBindings[i] = new DBDAttributeBindingCustom(
+                        null,
+                        dataContainer,
+                        dataSource,
+                        customAttributes.get(i),
+                        bindings.length + i);
+                }
+                DBDAttributeBinding[] combinedAttrs = new DBDAttributeBinding[bindings.length + customBindings.length];
+                System.arraycopy(bindings, 0, combinedAttrs, 0, bindings.length);
+                System.arraycopy(customBindings, 0, combinedAttrs, bindings.length, customBindings.length);
+                bindings = combinedAttrs;
+            }
+        }
+
+        if (filterAttributes && dataContainer instanceof DBDAttributeFilter) {
+            return ((DBDAttributeFilter) dataContainer).filterAttributeBindings(bindings);
+        } else {
+            return bindings;
+        }
+    }
+
+    /**
+     * Returns "bottom" level attributes out of resultset.
+     * For regular resultsets it is the same as getAttributeBindings, for compelx types it returns only leaf attributes.
+     * @return
+     */
+    @NotNull
+    public static DBDAttributeBinding[] makeLeafAttributeBindings(@NotNull DBCSession session, @NotNull DBSDataContainer dataContainer, @NotNull DBCResultSet resultSet) throws DBCException {
         List<DBDAttributeBinding> metaColumns = new ArrayList<>();
         List<DBCAttributeMetaData> attributes = resultSet.getMeta().getAttributes();
-        DBCSession session = resultSet.getSession();
         if (attributes.size() == 1 && attributes.get(0).getDataKind() == DBPDataKind.DOCUMENT) {
             DBCAttributeMetaData attributeMeta = attributes.get(0);
             DBDAttributeBindingMeta docBinding = DBUtils.getAttributeBinding(dataContainer, session, attributeMeta);
             try {
-                docBinding.lateBinding(session, Collections.emptyList());
-            } catch (DBException e) {
-                log.debug("Document attribute '" + docBinding.getName() + "' binding error", e);
+                List<Object[]> sampleRows = Collections.emptyList();
+                if (resultSet instanceof DBCResultSetSampleProvider) {
+                    session.getProgressMonitor().subTask("Read sample rows");
+                    sampleRows = ((DBCResultSetSampleProvider) resultSet).getSampleRows(session, MAX_SAMPLE_ROWS);
+                }
+                session.getProgressMonitor().subTask("Discover attribute structure");
+                docBinding.lateBinding(session, sampleRows);
+            } catch (Exception e) {
+                log.error("Document attribute '" + docBinding.getName() + "' binding error", e);
             }
             List<DBDAttributeBinding> nested = docBinding.getNestedBindings();
             if (!CommonUtils.isEmpty(nested)) {
@@ -656,7 +713,59 @@ public final class DBUtils {
                 metaColumns.add(columnBinding);
             }
         }
-        return metaColumns;
+
+        List<DBDAttributeBinding> result = new ArrayList<>(metaColumns.size());
+        for (DBDAttributeBinding binding : metaColumns) {
+            addLeafBindings(result, binding);
+        }
+
+        return injectAndFilterAttributeBindings(session.getDataSource(), dataContainer, result.toArray(new DBDAttributeBinding[0]), true);
+    }
+
+    private static void addLeafBindings(List<DBDAttributeBinding> result, DBDAttributeBinding binding) {
+        List<DBDAttributeBinding> nestedBindings = binding.getNestedBindings();
+        if (CommonUtils.isEmpty(nestedBindings)) {
+            result.add(binding);
+        } else {
+            for (DBDAttributeBinding nested : nestedBindings) {
+                addLeafBindings(result, nested);
+            }
+        }
+    }
+
+    @Nullable
+    public static Object getAttributeValue(@NotNull DBDAttributeBinding attribute, DBDAttributeBinding[] allAttributes, Object[] row) {
+        if (attribute.isCustom()) {
+            return DBVUtils.executeExpression(((DBDAttributeBindingCustom)attribute).getEntityAttribute(), allAttributes, row);
+        }
+        int depth = attribute.getLevel();
+        if (depth == 0) {
+            final int index = attribute.getOrdinalPosition();
+            if (index >= row.length) {
+                log.debug("Bad attribute '" + attribute.getName() + "' index: " + index + " is out of row values' bounds (" + row.length + ")");
+                return null;
+            } else {
+                return row[index];
+            }
+        }
+        Object curValue = row[attribute.getTopParent().getOrdinalPosition()];
+
+        for (int i = 0; i < depth; i++) {
+            if (curValue == null) {
+                break;
+            }
+            DBDAttributeBinding attr = attribute.getParent(depth - i - 1);
+            assert attr != null;
+            try {
+                curValue = attr.extractNestedValue(curValue);
+            } catch (DBCException e) {
+                log.debug("Error reading nested value of [" + attr.getName() + "]", e);
+                curValue = null;
+                break;
+            }
+        }
+
+        return curValue;
     }
 
     @NotNull
@@ -755,10 +864,10 @@ public final class DBUtils {
     }
 
     @NotNull
-    public static String getDefaultDataTypeName(@NotNull DBPDataSource dataSource, DBPDataKind dataKind)
+    public static String getDefaultDataTypeName(@NotNull DBSObject objectContainer, DBPDataKind dataKind)
     {
-        if (dataSource instanceof DBPDataTypeProvider) {
-            return ((DBPDataTypeProvider) dataSource).getDefaultDataTypeName(dataKind);
+        if (objectContainer instanceof DBPDataTypeProvider) {
+            return ((DBPDataTypeProvider) objectContainer).getDefaultDataTypeName(dataKind);
         } else {
             // Unsupported data kind
             return "?";
@@ -1195,15 +1304,7 @@ public final class DBUtils {
 
     public static void fireObjectUpdate(@NotNull DBSObject object)
     {
-        fireObjectUpdate(object, null);
-    }
-
-    public static void fireObjectUpdate(DBSObject object, @Nullable Object data)
-    {
-        final DBPDataSourceContainer container = getContainer(object);
-        if (container != null) {
-            container.fireEvent(new DBPEvent(DBPEvent.Action.OBJECT_UPDATE, object, data));
-        }
+        fireObjectUpdate(object, null, null);
     }
 
     public static void fireObjectUpdate(DBSObject object, boolean enabled)
@@ -1212,6 +1313,21 @@ public final class DBUtils {
         if (container != null) {
             container.fireEvent(new DBPEvent(DBPEvent.Action.OBJECT_UPDATE, object, enabled));
         }
+    }
+
+    public static void fireObjectUpdate(DBSObject object, @Nullable Map<String, Object> options, @Nullable Object data)
+    {
+        final DBPDataSourceContainer container = getContainer(object);
+        if (container != null) {
+            DBPEvent event = new DBPEvent(DBPEvent.Action.OBJECT_UPDATE, object, data);
+            event.setOptions(options);
+            container.fireEvent(event);
+        }
+    }
+
+    public static void fireObjectUpdate(DBSObject object, @Nullable Object data)
+    {
+        fireObjectUpdate(object, null, data);
     }
 
     public static void fireObjectAdd(DBSObject object, Map<String, Object> options)
@@ -1493,7 +1609,7 @@ public final class DBUtils {
     @SuppressWarnings("unchecked")
     @NotNull
     public static <T extends DBCSession> T openMetaSession(@NotNull DBRProgressMonitor monitor, @NotNull DBPDataSource dataSource, @NotNull String task) {
-        return (T) dataSource.getDefaultInstance().getDefaultContext(true).openSession(monitor, DBCExecutionPurpose.META, task);
+        return (T) dataSource.getDefaultInstance().getDefaultContext(monitor, true).openSession(monitor, DBCExecutionPurpose.META, task);
     }
 
     @SuppressWarnings("unchecked")
@@ -1635,13 +1751,17 @@ public final class DBUtils {
         return null;
     }
 
+    public static boolean isRowIdAttribute(DBSEntityAttribute attr) {
+        DBDPseudoAttribute rowIdAttribute = getRowIdAttribute(attr.getParentObject());
+        return rowIdAttribute != null && rowIdAttribute.getName().equals(attr.getName());
+    }
+
     public static DBDPseudoAttribute getPseudoAttribute(DBSEntity entity, String attrName) {
         if (entity instanceof DBDPseudoAttributeContainer) {
             try {
                 DBDPseudoAttribute[] pseudoAttributes = ((DBDPseudoAttributeContainer) entity).getPseudoAttributes();
                 if (pseudoAttributes != null && pseudoAttributes.length > 0) {
-                    for (int i = 0; i < pseudoAttributes.length; i++) {
-                        DBDPseudoAttribute pa = pseudoAttributes[i];
+                    for (DBDPseudoAttribute pa : pseudoAttributes) {
                         String attrId = pa.getAlias();
                         if (CommonUtils.isEmpty(attrId)) {
                             attrId = pa.getName();
@@ -1697,10 +1817,20 @@ public final class DBUtils {
         });
     }
 
-    public static String getClientApplicationName(DBPDataSourceContainer container, String purpose) {
+    public static String getClientApplicationName(DBPDataSourceContainer container, DBCExecutionContext context, String purpose) {
         if (container.getPreferenceStore().getBoolean(ModelPreferences.META_CLIENT_NAME_OVERRIDE)) {
             String appName = container.getPreferenceStore().getString(ModelPreferences.META_CLIENT_NAME_VALUE);
-            return GeneralUtils.replaceVariables(appName, container.getVariablesResolver());
+            IVariableResolver cVarResolver = container.getVariablesResolver(false);
+            return GeneralUtils.replaceVariables(appName, name -> {
+                switch (name) {
+                    case DBConstants.VAR_CONTEXT_NAME:
+                        return context == null ? null : context.getContextName();
+                    case DBConstants.VAR_CONTEXT_ID:
+                        return context == null ? null : String.valueOf(context.getContextId());
+                    default:
+                        return cVarResolver.get(name);
+                }
+            });
         }
         final String productTitle = GeneralUtils.getProductTitle();
         return purpose == null ? productTitle : productTitle + " - " + purpose;
@@ -1736,13 +1866,15 @@ public final class DBUtils {
             return null;
         }
         DBSInstance instance = getObjectOwnerInstance(object);
-        return instance == null ? null : instance.getDefaultContext(meta);
+        return instance == null ? null : instance.getDefaultContext(new VoidProgressMonitor(), meta);
     }
 
-    public static List<DBPDataSourceRegistry> getAllRegistries() {
+    public static List<DBPDataSourceRegistry> getAllRegistries(boolean forceLoad) {
         List<DBPDataSourceRegistry> result = new ArrayList<>();
         for (DBPProject project : DBWorkbench.getPlatform().getWorkspace().getProjects()) {
-            if (project.isOpen()) {
+            if (forceLoad || (project.isOpen() && project.isRegistryLoaded())) {
+                project.ensureOpen();
+
                 DBPDataSourceRegistry registry = project.getDataSourceRegistry();
                 if (registry != null) {
                     result.add(registry);
@@ -1839,4 +1971,53 @@ public final class DBUtils {
         }
         return null;
     }
+
+    public static boolean isReadOnly(DBSObject object)
+    {
+        if (object == null) {
+            return true;
+        }
+        DBPDataSource dataSource = object.getDataSource();
+        return dataSource == null || !dataSource.getContainer().hasModifyPermission(DBPDataSourcePermission.PERMISSION_EDIT_METADATA);
+    }
+
+    public static <T> T createNewAttributeValue(DBCExecutionContext context, DBDValueHandler valueHandler, DBSTypedObject valueType, Class<T> targetType) throws DBCException {
+        DBRRunnableWithResult<Object> runnable = new DBRRunnableWithResult<Object>() {
+            @Override
+            public void run(DBRProgressMonitor monitor) throws InvocationTargetException {
+                try (DBCSession session = context.openSession(monitor, DBCExecutionPurpose.UTIL, "Create new object")) {
+                    result = valueHandler.createNewValueObject(session, valueType);
+                } catch (DBCException e) {
+                    throw new InvocationTargetException(e);
+                }
+            }
+        };
+        try {
+            DBWorkbench.getPlatformUI().executeWithProgress(runnable);
+            //UIUtils.runInProgressService(runnable);
+        } catch (InvocationTargetException e) {
+            throw new DBCException(e.getTargetException(), context.getDataSource());
+        } catch (InterruptedException e) {
+            throw new DBCException(e, context.getDataSource());
+        }
+
+        Object result = runnable.getResult();
+        if (result == null) {
+            throw new DBCException("Internal error - null object created");
+        }
+        if (!targetType.isInstance(result)) {
+            throw new DBCException("Internal error - wrong object type '" + result.getClass().getName() + "' while '" + targetType.getName() + "' was expected");
+        }
+        return targetType.cast(result);
+    }
+
+    public static boolean isView(DBSEntity table) {
+        return table  instanceof DBSView || table instanceof DBSTable && ((DBSTable) table).isView();
+    }
+
+    public static String getEntityScriptName(DBSEntity entity, Map<String, Object> options) {
+        return CommonUtils.getOption(options, DBPScriptObject.OPTION_FULLY_QUALIFIED_NAMES, true) && entity instanceof DBPQualifiedObject ?
+            ((DBPQualifiedObject)entity).getFullyQualifiedName(DBPEvaluationContext.DDL) : DBUtils.getQuotedIdentifier(entity);
+    }
+
 }

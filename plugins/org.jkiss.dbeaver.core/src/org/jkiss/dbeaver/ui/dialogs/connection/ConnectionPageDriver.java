@@ -16,7 +16,6 @@
  */
 package org.jkiss.dbeaver.ui.dialogs.connection;
 
-import org.eclipse.core.resources.IProject;
 import org.eclipse.jface.viewers.*;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
@@ -24,13 +23,13 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Label;
 import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.core.DBeaverCore;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
-import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.IHelpContextIds;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.ActiveWizardPage;
@@ -70,29 +69,49 @@ class ConnectionPageDriver extends ActiveWizardPage implements ISelectionChanged
 
         setControl(placeholder);
 
+        Composite controlsGroup = UIUtils.createComposite(placeholder, 2);
+        controlsGroup.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+
+        {
+            // Spacer
+            new Label(controlsGroup, SWT.NONE).setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+        }
+        if (false) {
+            // Sorter
+            Composite orderGroup = UIUtils.createComposite(controlsGroup, 2);
+            orderGroup.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
+            UIUtils.createControlLabel(orderGroup, "Sort by");
+
+            final Combo orderCombo = new Combo(orderGroup, SWT.DROP_DOWN | SWT.READ_ONLY);
+            orderCombo.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
+            orderCombo.add("Rating");
+            orderCombo.add("Name");
+        }
+
+        connectionProject = wizard.getSelectedProject();
         final List<DBPProject> projects = DBeaverCore.getInstance().getWorkspace().getProjects();
         if (projects.size() == 1) {
-            connectionProject = projects.get(0);
+            if (connectionProject == null) {
+                connectionProject = projects.get(0);
+            }
         } else if (projects.size() > 1) {
 
-            Composite projectGroup = UIUtils.createComposite(placeholder, 2);
+            Composite projectGroup = UIUtils.createComposite(controlsGroup, 2);
             projectGroup.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
             UIUtils.createControlLabel(projectGroup, CoreMessages.dialog_connection_driver_project);
 
             final Combo projectCombo = new Combo(projectGroup, SWT.DROP_DOWN | SWT.READ_ONLY);
             projectCombo.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
 
-            final DBPProject activeProject = DBWorkbench.getPlatform().getWorkspace().getActiveProject();
             for (DBPProject project : projects) {
                 projectCombo.add(project.getName());
             }
 
-            if (activeProject == null) {
+            if (connectionProject == null) {
                 projectCombo.select(0);
                 connectionProject = projects.get(0);
             } else {
-                connectionProject = activeProject;
-                projectCombo.setText(activeProject.getName());
+                projectCombo.setText(connectionProject.getName());
             }
             projectCombo.addSelectionListener(new SelectionAdapter() {
                 @Override

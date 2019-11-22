@@ -24,11 +24,12 @@ import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.IWorkbenchPropertyPage;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.core.CoreMessages;
-import org.jkiss.dbeaver.core.DBeaverCore;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
+import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceViewDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceViewRegistry;
@@ -109,6 +110,11 @@ public class EditConnectionWizard extends ConnectionWizard
         return dataSource.getDriver();
     }
 
+    @Override
+    DBPProject getSelectedProject() {
+        return dataSource.getRegistry().getProject();
+    }
+
     @Nullable
     @Override
     public ConnectionPageSettings getPageSettings()
@@ -163,7 +169,7 @@ public class EditConnectionWizard extends ConnectionWizard
 
     @Override
     protected IAdaptable getActiveElement() {
-        return originalDataSource;
+        return dataSource;
     }
 
     public IWizardPage getPage(String name) {
@@ -172,7 +178,7 @@ public class EditConnectionWizard extends ConnectionWizard
             if (pageName.equals(name)) {
                 return page;
             }
-            if (page instanceof ICompositeDialogPage && !(page instanceof ConnectionPageSettings)) {
+            if (page instanceof ICompositeDialogPage) {
                 final IDialogPage[] subPages = ((ICompositeDialogPage) page).getSubPages(false);
                 if (subPages != null) {
                     for (IDialogPage subPage : subPages) {
@@ -205,7 +211,7 @@ public class EditConnectionWizard extends ConnectionWizard
 
         // Check locked datasources
         if (!CommonUtils.isEmpty(dataSource.getLockPasswordHash())) {
-            if (DBeaverCore.getInstance().getSecureStorage().useSecurePreferences() && !isOnlyUserCredentialChanged(dsCopy, dsChanged)) {
+            if (dataSource.getProject().getSecureStorage().useSecurePreferences() && !isOnlyUserCredentialChanged(dsCopy, dsChanged)) {
                 if (!checkLockPassword()) {
                     return false;
                 }
@@ -281,6 +287,14 @@ public class EditConnectionWizard extends ConnectionWizard
         pageGeneral.saveSettings(dataSource);
         pageInit.saveSettings(dataSource);
         pageEvents.saveSettings(dataSource);
+        for (IDialogPage page : getPages()) {
+            if (page instanceof WizardPrefPage) {
+                page = ((WizardPrefPage) page).getPreferencePage();
+            }
+            if (page instanceof IWorkbenchPropertyPage) {
+                ((IWorkbenchPropertyPage) page).setElement(dataSource);
+            }
+        }
         super.savePrefPageSettings();
 
         // Reset password if "Save password" was disabled
@@ -303,10 +317,6 @@ public class EditConnectionWizard extends ConnectionWizard
             }
         }
 */
-    }
-
-    private static boolean isPageActive(IDialogPage page) {
-        return page != null && page.getControl() != null;
     }
 
 }

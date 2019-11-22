@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.generic.model.*;
 import org.jkiss.dbeaver.ext.generic.model.meta.GenericMetaModel;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.DBPErrorAssistant;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
@@ -31,12 +32,15 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.format.SQLFormatUtils;
+import org.jkiss.utils.CommonUtils;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * HANAMetaModel
@@ -44,6 +48,7 @@ import java.util.Map;
 public class HANAMetaModel extends GenericMetaModel
 {
     private static final Log log = Log.getLog(HANAMetaModel.class);
+    private static Pattern ERROR_POSITION_PATTERN = Pattern.compile(" \\(at pos ([0-9]+)\\)");
 
     public HANAMetaModel() {
         super();
@@ -54,6 +59,7 @@ public class HANAMetaModel extends GenericMetaModel
         return new HANADataSource(monitor, container, this);
     }
 
+    @Override
     public String getViewDDL(DBRProgressMonitor monitor, GenericView sourceObject, Map<String, Object> options) throws DBException {
         GenericDataSource dataSource = sourceObject.getDataSource();
         try (JDBCSession session = DBUtils.openMetaSession(monitor, sourceObject, "Read HANA view source")) {
@@ -103,7 +109,6 @@ public class HANAMetaModel extends GenericMetaModel
 
     @Override
     public String getTableDDL(DBRProgressMonitor monitor, GenericTableBase sourceObject, Map<String, Object> options) throws DBException {
-        GenericDataSource dataSource = sourceObject.getDataSource();
         try (JDBCSession session = DBUtils.openMetaSession(monitor, sourceObject, "Read HANA table DDL")) {
             try (JDBCPreparedStatement dbStat = session.prepareCall(
                 "CALL get_object_definition(?,?)"))
@@ -127,7 +132,12 @@ public class HANAMetaModel extends GenericMetaModel
 
         return super.getTableDDL(monitor, sourceObject, options);
     }
-    
+
+    @Override
+    public boolean supportsTableDDLSplit(GenericTableBase sourceObject) {
+        return false;
+    }
+
     @Override
     public boolean supportsTriggers(@NotNull GenericDataSource dataSource) {
         return true;
@@ -154,9 +164,9 @@ public class HANAMetaModel extends GenericMetaModel
             throw new DBException(e, container.getDataSource());
         }
     }
-	
-	@Override
-	public String getTriggerDDL(DBRProgressMonitor monitor, GenericTrigger sourceObject) throws DBException {
+
+    @Override
+    public String getTriggerDDL(DBRProgressMonitor monitor, GenericTrigger sourceObject) throws DBException {
         GenericDataSource dataSource = sourceObject.getDataSource();
         try (JDBCSession session = DBUtils.openMetaSession(monitor, sourceObject, "Read HANA trigger source")) {
             try (JDBCPreparedStatement dbStat = session.prepareStatement(
@@ -176,4 +186,126 @@ public class HANAMetaModel extends GenericMetaModel
             throw new DBException(e, dataSource);
         }
     }
+
+    @Override
+    public boolean supportsSequences(GenericDataSource dataSource) {
+        return true;
+    }
+
+    @Override
+    public List<GenericSequence> loadSequences(DBRProgressMonitor monitor, GenericStructContainer container) throws DBException {
+        try (JDBCSession session = DBUtils.openMetaSession(monitor, container, "Read synonyms")) {
+            try (JDBCPreparedStatement dbStat = session.prepareStatement(
+                "SELECT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY FROM SYS.SEQUENCES WHERE SCHEMA_NAME = ? ORDER BY SEQUENCE_NAME")) {
+                dbStat.setString(1, container.getName());
+                List<GenericSequence> result = new ArrayList<>();
+                try (JDBCResultSet dbResult = dbStat.executeQuery()) {
+                    while (dbResult.next()) {
+                        String name = dbResult.getString(1);
+                        Number minValue = dbResult.getBigDecimal(2);
+                        Number maxValue = dbResult.getBigDecimal(3);
+                        Number incrementBy = dbResult.getBigDecimal(4);
+                        Number lastValue = null;
+                        GenericSequence sequence = new GenericSequence(container, name, "", lastValue, minValue, maxValue, incrementBy);
+                        result.add(sequence);
+                    }
+                }
+                return result;
+
+            }
+        } catch (SQLException e) {
+            throw new DBException(e, container.getDataSource());
+        }
+    }
+
+    
+    @Override
+    public boolean supportsSynonyms(GenericDataSource dataSource) {
+        return true;
+    }
+
+    @Override
+    public List<? extends GenericSynonym> loadSynonyms(DBRProgressMonitor monitor, GenericStructContainer container) throws DBException {
+        // TODO: create a fake schema to show PUBLIC synonyms? 
+        try (JDBCSession session = DBUtils.openMetaSession(monitor, container, "Read synonyms")) {
+            try (JDBCPreparedStatement dbStat = session.prepareStatement(
+                "SELECT SYNONYM_NAME, OBJECT_SCHEMA, OBJECT_NAME FROM SYS.SYNONYMS WHERE SCHEMA_NAME = ? ORDER BY SYNONYM_NAME")) {
+                dbStat.setString(1, container.getName());
+                List<GenericSynonym> result = new ArrayList<>();
+                try (JDBCResultSet dbResult = dbStat.executeQuery()) {
+                    while (dbResult.next()) {
+                        String name = dbResult.getString(1);
+                        String targetSchema = dbResult.getString(2);
+                        String targetObject = dbResult.getString(3);
+                        HANASynonym synonym = new HANASynonym(container, name, targetSchema, targetObject);
+                        result.add(synonym);
+                    }
+                }
+                return result;
+
+            }
+        } catch (SQLException e) {
+            throw new DBException(e, container.getDataSource());
+        }
+    }
+
+    @Override
+    public String getAutoIncrementClause(GenericTableColumn column) {
+        return "GENERATED ALWAYS AS IDENTITY";
+    }
+
+    @Override
+    public boolean isSystemSchema(GenericSchema schema) {
+        String schemaName = schema.getName();
+        return schemaName.startsWith("_SYS_") ||
+            schemaName.startsWith("SAP_") ||
+            schemaName.startsWith("HANA_");
+    }
+
+    @Override
+    public boolean isSystemTable(GenericTableBase table) {
+        // empty schemas are still shown, so hiding everything in system schemas looks strange
+        //if (table.getSchema().getName().startsWith("_SYS_"))
+        //    return true;
+        return table.getName().startsWith("_SYS_");
+    }
+    
+    @Override
+    public DBPErrorAssistant.ErrorPosition getErrorPosition(@NotNull Throwable error) {
+        String message = error.getMessage();
+        if (!CommonUtils.isEmpty(message)) {
+            Matcher matcher = ERROR_POSITION_PATTERN.matcher(message);
+            if (matcher.find()) {
+                DBPErrorAssistant.ErrorPosition pos = new DBPErrorAssistant.ErrorPosition();
+                pos.line = -1;
+                pos.position = Integer.parseInt(matcher.group(1)) - 1;
+                return pos;
+            }
+        }
+        return null;
+    }
+    
+    @Override
+    public GenericTableColumn createTableColumnImpl(DBRProgressMonitor monitor, GenericTableBase table, String columnName, String typeName, int valueType, int sourceType, int ordinalPos, long columnSize, long charLength, Integer scale, Integer precision, int radix, boolean notNull, String remarks, String defaultValue, boolean autoIncrement, boolean autoGenerated) throws DBException {
+
+        if(table.getSchema().getName().equals("SYS") && table.isView()) {
+            ((HANADataSource)table.getDataSource()).initializeSysViewColumnUnits(monitor);
+            return new HANASysViewColumn(table,
+                    columnName,
+                    typeName, valueType, sourceType, ordinalPos,
+                    columnSize,
+                    charLength, scale, precision, radix, notNull,
+                    remarks, defaultValue, autoIncrement, autoGenerated
+                );
+        } else {
+            return new HANATableColumn(table,
+                columnName,
+                typeName, valueType, sourceType, ordinalPos,
+                columnSize,
+                charLength, scale, precision, radix, notNull,
+                remarks, defaultValue, autoIncrement, autoGenerated
+            );
+        }
+    }
+    
 }

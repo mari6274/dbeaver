@@ -139,7 +139,7 @@
 
                     <replace provider="mssql" driver="mssql_jdbc_ms_new"/>
 
-                    <file type="jar" path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[7.2.1.jre8]" bundle="!drivers.mssql.new"/>
+                    <file type="jar" path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[7.4.1.jre8]" bundle="!drivers.mssql.new"/>
                     <!--<file type="jar" path="maven:/com.microsoft.azure:adal4j:RELEASE" optional="true" />-->
                     <file type="lib" os="win32" arch="x86" path="repo:/drivers/mssql/auth/x86/sqljdbc_auth.dll" bundle="!drivers.mssql.new"/>
                     <file type="lib" os="win32" arch="x86_64" path="repo:/drivers/mssql/auth/x64/sqljdbc_auth.dll" bundle="!drivers.mssql.new"/>
@@ -167,7 +167,7 @@
 
                     <replace provider="mssql" driver="mssql_jdbc_azure"/>
 
-                    <file type="jar" path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[7.2.1.jre8]" bundle="!drivers.mssql.new"/>
+                    <file type="jar" path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[7.4.1.jre8]" bundle="!drivers.mssql.new"/>
                     <file type="jar" path="drivers/mssql/new/mssql-jdbc.jar" bundle="drivers.mssql.new"/>
 
                     <!-- Active directory auth -->
@@ -200,7 +200,7 @@
                 description="%datasource.mssql.description"
                 id="mssql"
                 parent="generic"
-                label="MS SQL Server"
+                label="MS SQL Server (Generic)"
                 icon="icons/mssql_icon.png">
             <drivers managable="true">
                 <!-- Obsolete -->
@@ -289,7 +289,7 @@
                     <parameter name="native-format-time" value="''HH:mm:ss.SSS''"/>
                     <parameter name="script-delimiter-after-query" value="true"/>
 
-                    <file type="jar" path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[7.0.0.jre8]" bundle="!drivers.mssql.new"/>
+                    <file type="jar" path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[7.4.1.jre8]" bundle="!drivers.mssql.new"/>
                     <file type="lib" os="win32" arch="x86" path="repo:/drivers/mssql/auth/x86/sqljdbc_auth.dll" bundle="!drivers.mssql.new"/>
                     <file type="lib" os="win32" arch="x86_64" path="repo:/drivers/mssql/auth/x64/sqljdbc_auth.dll" bundle="!drivers.mssql.new"/>
 
@@ -400,6 +400,21 @@
 
             </drivers>
         </datasource>
+    </extension>
+
+    <extension point="org.jkiss.dbeaver.objectManager">
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerTableManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTable"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerTableColumnManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTableColumn"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerUniqueKeyManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTableUniqueKey"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerForeignKeyManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTableForeignKey"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerIndexManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTableIndex"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerCheckConstraintManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTableCheckConstraint"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerTableTriggerManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerTableTrigger"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerProcedureManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerProcedure"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.SQLServerViewManager" objectType="org.jkiss.dbeaver.ext.mssql.model.SQLServerView"/>
+
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.generic.SQLServerGenericProcedureManager" objectType="org.jkiss.dbeaver.ext.mssql.model.generic.SQLServerGenericProcedure"/>
+        <manager class="org.jkiss.dbeaver.ext.mssql.edit.generic.SQLServerGenericTriggerManager" objectType="org.jkiss.dbeaver.ext.mssql.model.generic.SQLServerGenericTrigger"/>
     </extension>
 
 </plugin>

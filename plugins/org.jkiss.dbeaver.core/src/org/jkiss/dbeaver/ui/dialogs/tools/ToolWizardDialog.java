@@ -28,13 +28,11 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchWindow;
-import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
-import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.ui.dialogs.ActiveWizardDialog;
 import org.jkiss.dbeaver.ui.dialogs.BaseDialog;
-import org.jkiss.dbeaver.ui.dialogs.connection.ClientHomesPanel;
 import org.jkiss.dbeaver.ui.dialogs.connection.ClientHomesSelector;
+import org.jkiss.dbeaver.ui.internal.UIMessages;
 
 /**
  * Tool wizard dialog
@@ -49,6 +47,7 @@ public class ToolWizardDialog extends ActiveWizardDialog
         super(window, wizard);
         setShellStyle(SWT.CLOSE | SWT.MAX | SWT.MIN | SWT.TITLE | SWT.BORDER | SWT.RESIZE | getDefaultOrientation());
         setHelpAvailable(false);
+        setFinishButtonLabel(UIMessages.button_start);
     }
 
     @Override
@@ -59,8 +58,8 @@ public class ToolWizardDialog extends ActiveWizardDialog
             if (nativeClientRequired) {
                 parent.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
-                Button configButton = createButton(parent, CLIENT_CONFIG_ID, "  Client configuration ...  ", false);
-                configButton.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
+                Button configButton = createButton(parent, CLIENT_CONFIG_ID, "Client ...", false);
+                //configButton.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
 
                 Label spacer = new Label(parent, SWT.NONE);
                 spacer.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
@@ -71,10 +70,6 @@ public class ToolWizardDialog extends ActiveWizardDialog
         }
 
         super.createButtonsForButtonBar(parent);
-        Button cancelButton = getButton(IDialogConstants.CANCEL_ID);
-        cancelButton.setText(IDialogConstants.CLOSE_LABEL);
-        Button finishButton = getButton(IDialogConstants.FINISH_ID);
-        finishButton.setText(CoreMessages.tools_wizard_dialog_button_start);
     }
 
     @Override

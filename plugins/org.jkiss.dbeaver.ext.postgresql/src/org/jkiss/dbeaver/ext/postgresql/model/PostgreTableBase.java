@@ -22,9 +22,9 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBPNamedObject2;
+import org.jkiss.dbeaver.model.DBPScriptObjectExt2;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.exec.DBCException;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCStructCache;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCTable;
@@ -35,6 +35,7 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntityAssociation;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.utils.CommonUtils;
 
 import java.sql.ResultSet;
@@ -45,23 +46,22 @@ import java.util.List;
 /**
  * PostgreTableBase
  */
-public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, PostgreTableContainer> implements PostgreClass, PostgreScriptObject, PostgrePrivilegeOwner, DBPNamedObject2
+public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, PostgreTableContainer> implements PostgreClass, PostgreScriptObject, DBPScriptObjectExt2, PostgrePrivilegeOwner, DBPNamedObject2
 {
     private static final Log log = Log.getLog(PostgreTableBase.class);
 
     private long oid;
     private long ownerId;
     private String description;
-	protected boolean isPartition;
-	private boolean hasPartitions;
+	private boolean isPartition;
     private PostgreTablePersistence persistence;
-	private String partitionKey;
     private Object acl;
     private String[] relOptions;
 
     protected PostgreTableBase(PostgreTableContainer container)
     {
         super(container, false);
+        this.persistence = PostgreTablePersistence.PERMANENT;
     }
 
     protected PostgreTableBase(
@@ -75,8 +75,6 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         this.isPartition =
             getDataSource().isServerVersionAtLeast(10, 0) &&
             JDBCUtils.safeGetBoolean(dbResult, "relispartition");
-        this.partitionKey = getDataSource().isServerVersionAtLeast(10, 0) ? JDBCUtils.safeGetString(dbResult, "partition_key")  : null;
-        this.hasPartitions = this.partitionKey != null;
         this.acl = JDBCUtils.safeGetObject(dbResult, "relacl");
         if (getDataSource().isServerVersionAtLeast(8, 2)) {
             this.relOptions = JDBCUtils.safeGetArray(dbResult, "reloptions");
@@ -85,6 +83,8 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
 
         if (container.getDataSource().isServerVersionAtLeast(9, 1)) {
             persistence = PostgreTablePersistence.getByCode(JDBCUtils.safeGetString(dbResult, "relpersistence"));
+        } else {
+            this.persistence = PostgreTablePersistence.PERMANENT;
         }
     }
 
@@ -94,9 +94,9 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         this.ownerId = source.ownerId;
         this.description = source.description;
         this.isPartition = source.isPartition;
-        this.partitionKey = source.partitionKey;
         this.acl = source.acl;
         this.relOptions = source.relOptions;
+        this.persistence = source.persistence;
 
         DBSObjectCache<PostgreTableBase, PostgreTableColumn> colCache = getSchema().getTableCache().getChildrenCache(this);
         // Copy columns
@@ -126,7 +126,7 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         return PostgreDependency.readDependencies(monitor, this, true);
     }
 
-    @Property(viewable = true, editable = false, updatable = false, order = 9)
+    @Property(viewable = true, order = 9)
     @Override
     public long getObjectId() {
         return this.oid;
@@ -154,7 +154,7 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         this.description = description;
     }
 
-    @Property(viewable = true, editable = false, updatable = false, order = 10)
+    @Property(viewable = true, order = 10)
     public PostgreRole getOwner(DBRProgressMonitor monitor) throws DBException {
         return getDatabase().getRoleById(monitor, ownerId);
     }
@@ -164,7 +164,7 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
     public String getFullyQualifiedName(DBPEvaluationContext context)
     {
         return DBUtils.getFullQualifiedName(getDataSource(),
-            getContainer(),
+            getSchema(),
             this);
     }
 
@@ -172,7 +172,9 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
     public PostgreSchema getSchema() {
         final DBSObject parentObject = super.getParentObject();
         assert parentObject != null;
-        return (PostgreSchema) parentObject;
+        return parentObject instanceof PostgreSchema ?
+            (PostgreSchema) parentObject :
+            ((PostgreTableBase) parentObject).getSchema();
     }
 
     /**
@@ -186,8 +188,8 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         return getContainer().getSchema().getTableCache().getChildren(monitor, getContainer(), this);
     }
 
-    public PostgreTableColumn getAttributeByPos(DBRProgressMonitor monitor, int position) throws DBException {
-        for (PostgreTableColumn attr : getAttributes(monitor)) {
+    protected PostgreTableColumn getAttributeByPos(DBRProgressMonitor monitor, int position) throws DBException {
+        for (PostgreTableColumn attr : CommonUtils.safeCollection(getAttributes(monitor))) {
             if (attr.getOrdinalPosition() == position) {
                 return attr;
             }
@@ -195,6 +197,7 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         return null;
     }
 
+    @Association
     public List<? extends PostgreTableColumn> getCachedAttributes()
     {
         final DBSObjectCache<PostgreTableBase, PostgreTableColumn> childrenCache = getContainer().getSchema().getTableCache().getChildrenCache(this);
@@ -258,7 +261,11 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
 		return isPartition;
 	}
 
-	@NotNull
+    public void setPartition(boolean partition) {
+        isPartition = partition;
+    }
+
+    @NotNull
     public PostgreTablePersistence getPersistence() {
         return persistence;
     }
@@ -273,6 +280,11 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
     @Override
     public String generateChangeOwnerQuery(String owner) {
         return "ALTER TABLE " + DBUtils.getObjectFullName(this, DBPEvaluationContext.DDL) + " OWNER TO " + owner;
+    }
+
+    @Override
+    public boolean supportsObjectDefinitionOption(String option) {
+        return OPTION_DDL_ONLY_FOREIGN_KEYS.equals(option) || OPTION_DDL_SKIP_FOREIGN_KEYS.equals(option);
     }
 
     public static class TablespaceListProvider implements IPropertyValueListProvider<PostgreTableBase> {
@@ -293,15 +305,5 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
             }
         }
     }
-
-    public boolean hasPartitions() {
-        return hasPartitions;
-    }
-
-    public String getPartKey() {
-        return partitionKey;
-    }
-    
-    
 
 }

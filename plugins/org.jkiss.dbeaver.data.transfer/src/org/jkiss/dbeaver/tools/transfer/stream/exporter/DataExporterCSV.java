@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.tools.transfer.stream.exporter;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBPDataKind;
+import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDContent;
@@ -37,7 +38,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,6 +46,7 @@ import java.util.Map;
 public class DataExporterCSV extends StreamExporterAbstract {
 
     private static final String PROP_DELIMITER = "delimiter";
+    private static final String PROP_ROW_DELIMITER = "rowDelimiter";
     private static final String PROP_HEADER = "header";
     private static final String PROP_QUOTE_CHAR = "quoteChar";
     private static final String PROP_QUOTE_ALWAYS = "quoteAlways";
@@ -61,6 +62,9 @@ public class DataExporterCSV extends StreamExporterAbstract {
         bottom,
         both
     }
+
+    private static final String ROW_DELIMITER_DEFAULT = "default";
+
     private String delimiter;
     private char quoteChar = '"';
     private boolean useQuotes = true;
@@ -68,7 +72,7 @@ public class DataExporterCSV extends StreamExporterAbstract {
     private String rowDelimiter;
     private String nullString;
     private HeaderPosition headerPosition;
-    private List<DBDAttributeBinding> columns;
+    private DBDAttributeBinding[] columns;
 
     private final StringBuilder buffer = new StringBuilder();
 
@@ -78,6 +82,10 @@ public class DataExporterCSV extends StreamExporterAbstract {
         super.init(site);
         Map<Object, Object> properties = site.getProperties();
         this.delimiter = StreamTransferUtils.getDelimiterString(properties, PROP_DELIMITER);
+        this.rowDelimiter = StreamTransferUtils.getDelimiterString(properties, PROP_ROW_DELIMITER);
+        if (ROW_DELIMITER_DEFAULT.equalsIgnoreCase(this.rowDelimiter.trim())) {
+            this.rowDelimiter = GeneralUtils.getDefaultLineSeparator();
+        }
         Object quoteProp = properties.get(PROP_QUOTE_CHAR);
         String quoteStr = quoteProp == null ? DEF_QUOTE_CHAR : quoteProp.toString();
         if (!CommonUtils.isEmpty(quoteStr)) {
@@ -91,7 +99,6 @@ public class DataExporterCSV extends StreamExporterAbstract {
         nullString = nullStringProp == null ? null : nullStringProp.toString();
         useQuotes = quoteChar != ' ';
         quoteAlways = CommonUtils.toBoolean(properties.get(PROP_QUOTE_ALWAYS));
-        rowDelimiter = GeneralUtils.getDefaultLineSeparator();
         try {
             headerPosition = HeaderPosition.valueOf(String.valueOf(properties.get(PROP_HEADER)));
         } catch (Exception e) {
@@ -124,11 +131,15 @@ public class DataExporterCSV extends StreamExporterAbstract {
 
     private void printHeader()
     {
-        for (int i = 0, columnsSize = columns.size(); i < columnsSize; i++) {
-            DBDAttributeBinding column = columns.get(i);
-            String colName = column.getLabel();
-            if (CommonUtils.isEmpty(colName)) {
-                colName = column.getName();
+        for (int i = 0, columnsSize = columns.length; i < columnsSize; i++) {
+            DBDAttributeBinding column = columns[i];
+            String colLabel = column.getLabel();
+            String colName = column.getName();
+            if (CommonUtils.equalObjects(colLabel, colName)) {
+                colName = column.getParentObject() == null ? column.getName() : DBUtils.getObjectFullName(column, DBPEvaluationContext.UI);
+            } else if (!CommonUtils.isEmpty(colLabel)) {
+                // Label has higher priority
+                colName = colLabel;
             }
             writeCellValue(colName, true);
             if (i < columnsSize - 1) {
@@ -141,8 +152,8 @@ public class DataExporterCSV extends StreamExporterAbstract {
     @Override
     public void exportRow(DBCSession session, DBCResultSet resultSet, Object[] row) throws DBException, IOException
     {
-        for (int i = 0; i < row.length && i < columns.size(); i++) {
-            DBDAttributeBinding column = columns.get(i);
+        for (int i = 0; i < row.length && i < columns.length; i++) {
+            DBDAttributeBinding column = columns[i];
             if (DBUtils.isNullValue(row[i])) {
                 if (!CommonUtils.isEmpty(nullString)) {
                     getWriter().write(nullString);
@@ -183,8 +194,7 @@ public class DataExporterCSV extends StreamExporterAbstract {
     }
 
     @Override
-    public void exportFooter(DBRProgressMonitor monitor) throws DBException, IOException
-    {
+    public void exportFooter(DBRProgressMonitor monitor) {
         if (headerPosition == HeaderPosition.bottom || headerPosition == HeaderPosition.both) {
             printHeader();
         }

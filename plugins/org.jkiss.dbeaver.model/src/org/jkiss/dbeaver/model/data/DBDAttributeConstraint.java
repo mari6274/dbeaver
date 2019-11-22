@@ -88,8 +88,8 @@ public class DBDAttributeConstraint extends DBDAttributeConstraintBase {
 
     @Override
     public boolean hasFilter() {
-        return super.hasFilter() || originalVisualPosition != getVisualPosition() ||
-            (attribute instanceof DBDAttributeBinding && isVisible() != isVisibleByDefault((DBDAttributeBinding) attribute));
+        return super.hasFilter() || // compare visual position only if it explicitly set
+            (getVisualPosition() != NULL_VISUAL_POSITION && originalVisualPosition != getVisualPosition());
     }
 
     public void reset() {
@@ -131,8 +131,10 @@ public class DBDAttributeConstraint extends DBDAttributeConstraintBase {
 
     public boolean matches(DBSAttributeBase attr, boolean matchByName) {
         return attribute == attr ||
-            (attribute instanceof DBDAttributeBinding && ((DBDAttributeBinding) attribute).matches(attr, matchByName)) ||
-            (matchByName && attributeName.equals(attr.getName()));
+            (attribute instanceof DBDAttributeBinding && ((DBDAttributeBinding) attribute).matches(attr, matchByName));
     }
 
+    public boolean equalVisibility(DBDAttributeConstraint constraint) {
+        return isVisible() == constraint.isVisible() && getVisualPosition() == constraint.getVisualPosition();
+    }
 }

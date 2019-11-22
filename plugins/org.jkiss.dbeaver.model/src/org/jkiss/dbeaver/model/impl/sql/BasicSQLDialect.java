@@ -21,9 +21,11 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
-import org.jkiss.dbeaver.model.data.DBDValue;
 import org.jkiss.dbeaver.model.impl.data.formatters.BinaryFormatterHexNative;
-import org.jkiss.dbeaver.model.sql.*;
+import org.jkiss.dbeaver.model.sql.SQLConstants;
+import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLStateType;
+import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.sql.parser.SQLSemanticProcessor;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedure;
@@ -54,12 +56,13 @@ public class BasicSQLDialect implements SQLDialect {
         }
     };
     protected static final String[] NON_TRANSACTIONAL_KEYWORDS = new String[]{
-        //SQLConstants.KEYWORD_SELECT, "WITH",
+        SQLConstants.KEYWORD_SELECT, "WITH",
         "EXPLAIN", "DESCRIBE", "DESC", "USE", "SET", "COMMIT", "ROLLBACK"};
     private static final String[] CORE_NON_TRANSACTIONAL_KEYWORDS = new String[]{
         SQLConstants.KEYWORD_SELECT,
     };
-    public static final String[][] DEFAULT_QUOTE_STRINGS = {{"\"", "\""}};
+    public static final String[][] DEFAULT_IDENTIFIER_QUOTES = {{"\"", "\""}};
+    public static final String[][] DEFAULT_STRING_QUOTES = {{"'", "'"}};
 
     // Keywords
     private TreeMap<String, DBPKeywordType> allKeywords = new TreeMap<>();
@@ -88,7 +91,13 @@ public class BasicSQLDialect implements SQLDialect {
     @Nullable
     @Override
     public String[][] getIdentifierQuoteStrings() {
-        return DEFAULT_QUOTE_STRINGS;
+        return DEFAULT_IDENTIFIER_QUOTES;
+    }
+
+    @NotNull
+    @Override
+    public String[][] getStringQuoteStrings() {
+        return DEFAULT_STRING_QUOTES;
     }
 
     @NotNull
@@ -164,13 +173,13 @@ public class BasicSQLDialect implements SQLDialect {
 
     @NotNull
     @Override
-    public Set<String> getFunctions(@NotNull DBPDataSource dataSource) {
+    public Set<String> getFunctions(@Nullable DBPDataSource dataSource) {
         return functions;
     }
 
     @NotNull
     @Override
-    public TreeSet<String> getDataTypes(@NotNull DBPDataSource dataSource) {
+    public TreeSet<String> getDataTypes(@Nullable DBPDataSource dataSource) {
         return types;
     }
 
@@ -211,7 +220,7 @@ public class BasicSQLDialect implements SQLDialect {
     }
 
     @Override
-    public int getKeywordNextLineIndent(String word) {
+    public int getKeywordNextLineIndent(@NotNull String word) {
         Integer indent = keywordsIndent.get(word.toUpperCase(Locale.ENGLISH));
         return indent == null ? 0 : indent;
     }
@@ -248,6 +257,7 @@ public class BasicSQLDialect implements SQLDialect {
         return SQLConstants.STRUCT_SEPARATOR;
     }
 
+    @NotNull
     @Override
     public String[] getParametersPrefixes() {
         return new String[0];//{String.valueOf(SQLConstants.DEFAULT_PARAMETER_PREFIX)};
@@ -284,12 +294,6 @@ public class BasicSQLDialect implements SQLDialect {
     @Nullable
     @Override
     public String[] getBlockHeaderStrings() {
-        return null;
-    }
-
-    @Nullable
-    @Override
-    public String getBlockToggleString() {
         return null;
     }
 
@@ -379,6 +383,16 @@ public class BasicSQLDialect implements SQLDialect {
 
     @Override
     public boolean supportsOrderByIndex() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsOrderBy() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsGroupBy() {
         return true;
     }
 

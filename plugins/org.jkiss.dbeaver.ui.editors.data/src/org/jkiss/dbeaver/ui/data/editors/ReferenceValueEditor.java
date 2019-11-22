@@ -34,24 +34,22 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.*;
-import org.jkiss.dbeaver.model.exec.DBCExecutionPurpose;
-import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
 import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.load.AbstractLoadService;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.ui.LoadingJob;
 import org.jkiss.dbeaver.ui.UIUtils;
-import org.jkiss.dbeaver.ui.controls.resultset.internal.ResultSetMessages;
-import org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerObjectOpen;
 import org.jkiss.dbeaver.ui.controls.ProgressLoaderVisualizer;
+import org.jkiss.dbeaver.ui.controls.resultset.ResultSetUtils;
+import org.jkiss.dbeaver.ui.controls.resultset.internal.ResultSetMessages;
 import org.jkiss.dbeaver.ui.data.IAttributeController;
 import org.jkiss.dbeaver.ui.data.IValueController;
 import org.jkiss.dbeaver.ui.data.IValueEditor;
 import org.jkiss.dbeaver.ui.editors.data.DatabaseDataEditor;
 import org.jkiss.dbeaver.ui.editors.object.struct.EditDictionaryPage;
+import org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerObjectOpen;
 import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.InvocationTargetException;
@@ -71,7 +69,7 @@ public class ReferenceValueEditor {
     private IValueController valueController;
     private IValueEditor valueEditor;
     private DBSEntityReferrer refConstraint;
-    private Table editorSelector;
+    private Tree editorSelector;
     private volatile boolean sortByValue = true;
     private volatile boolean sortAsc = true;
     private volatile boolean dictLoaded = false;
@@ -95,28 +93,7 @@ public class ReferenceValueEditor {
     private DBSEntityReferrer getEnumerableConstraint()
     {
         if (valueController instanceof IAttributeController) {
-            return getEnumerableConstraint(((IAttributeController) valueController).getBinding());
-        }
-        return null;
-    }
-
-    public static DBSEntityReferrer getEnumerableConstraint(DBDAttributeBinding binding) {
-        try {
-            DBSEntityAttribute entityAttribute = binding.getEntityAttribute();
-            if (entityAttribute != null) {
-                List<DBSEntityReferrer> refs = DBUtils.getAttributeReferrers(new VoidProgressMonitor(), entityAttribute, true);
-                DBSEntityReferrer constraint = refs.isEmpty() ? null : refs.get(0);
-                if (constraint instanceof DBSEntityAssociation &&
-                    ((DBSEntityAssociation)constraint).getAssociatedEntity() instanceof DBSDictionary)
-                {
-                    final DBSDictionary dictionary = (DBSDictionary) ((DBSEntityAssociation) constraint).getAssociatedEntity();
-                    if (dictionary != null && dictionary.supportsDictionaryEnumeration()) {
-                        return constraint;
-                    }
-                }
-            }
-        } catch (DBException e) {
-            log.error(e);
+            return ResultSetUtils.getEnumerableConstraint(((IAttributeController) valueController).getBinding());
         }
         return null;
     }
@@ -171,7 +148,7 @@ public class ReferenceValueEditor {
             }
         }
 
-        editorSelector = new Table(parent, SWT.BORDER | SWT.SINGLE | SWT.FULL_SELECTION | SWT.H_SCROLL | SWT.V_SCROLL);
+        editorSelector = new Tree(parent, SWT.BORDER | SWT.SINGLE | SWT.FULL_SELECTION | SWT.H_SCROLL | SWT.V_SCROLL);
         editorSelector.setLinesVisible(true);
         editorSelector.setHeaderVisible(true);
         GridData gd = new GridData(GridData.FILL_BOTH);
@@ -181,9 +158,9 @@ public class ReferenceValueEditor {
         //gd.grabExcessHorizontalSpace = true;
         editorSelector.setLayoutData(gd);
 
-        TableColumn valueColumn = UIUtils.createTableColumn(editorSelector, SWT.LEFT, ResultSetMessages.dialog_value_view_column_value);
+        TreeColumn valueColumn = UIUtils.createTreeColumn(editorSelector, SWT.LEFT, ResultSetMessages.dialog_value_view_column_value);
         valueColumn.setData(Boolean.TRUE);
-        TableColumn descColumn = UIUtils.createTableColumn(editorSelector, SWT.LEFT, ResultSetMessages.dialog_value_view_column_description);
+        TreeColumn descColumn = UIUtils.createTreeColumn(editorSelector, SWT.LEFT, ResultSetMessages.dialog_value_view_column_description);
         descColumn.setData(Boolean.FALSE);
 
         SortListener sortListener = new SortListener();
@@ -194,7 +171,7 @@ public class ReferenceValueEditor {
             @Override
             public void widgetSelected(SelectionEvent e)
             {
-                TableItem[] selection = editorSelector.getSelection();
+                TreeItem[] selection = editorSelector.getSelection();
                 if (selection != null && selection.length > 0) {
                     Object value = selection[0].getData();
                     //editorControl.setText(selection[0].getText());
@@ -231,16 +208,16 @@ public class ReferenceValueEditor {
             final String curTextValue = valueController.getValueHandler().getValueDisplayString(
                 ((IAttributeController) valueController).getBinding(),
                 curEditorValue,
-                DBDDisplayFormat.UI);
+                DBDDisplayFormat.EDIT);
             boolean valueFound = false;
             if (curTextValue != null) {
-                TableItem[] items = editorSelector.getItems();
+                TreeItem[] items = editorSelector.getItems();
                 for (int i = 0; i < items.length; i++) {
-                    TableItem item = items[i];
+                    TreeItem item = items[i];
                     if (curTextValue.equalsIgnoreCase(item.getText(0)) || curTextValue.equalsIgnoreCase(item.getText(1))) {
-                        editorSelector.select(editorSelector.indexOf(item));
+                        editorSelector.select(item);
                         editorSelector.showItem(item);
-                        editorSelector.setTopIndex(i);
+                        //editorSelector.setTopIndex(i);
                         valueFound = true;
                         break;
                     }
@@ -274,14 +251,9 @@ public class ReferenceValueEditor {
                 }
             });
         }
-        UIUtils.asyncExec(() -> {
-            if (!editorSelector.isDisposed()) {
-                UIUtils.packColumns(editorSelector, true);
-            }
-        });
         final Object curValue = valueController.getValue();
 
-        reloadSelectorValues(curValue instanceof Number ? curValue : null);
+        reloadSelectorValues(curValue);
 
         return true;
     }
@@ -311,19 +283,19 @@ public class ReferenceValueEditor {
         try {
             editorSelector.removeAll();
             for (DBDLabelValuePair entry : valuesData.keyValues) {
-                TableItem discItem = new TableItem(editorSelector, SWT.NONE);
+                TreeItem discItem = new TreeItem(editorSelector, SWT.NONE);
                 discItem.setText(0,
                     valuesData.keyHandler.getValueDisplayString(
                         valuesData.keyColumn.getAttribute(),
                         entry.getValue(),
-                        DBDDisplayFormat.UI));
+                        DBDDisplayFormat.EDIT));
                 discItem.setText(1, entry.getLabel());
                 discItem.setData(entry.getValue());
             }
 
             selectCurrentValue();
 
-            UIUtils.maxTableColumnsWidth(editorSelector);
+            UIUtils.packColumns(editorSelector, false, null);
         } finally {
             editorSelector.setRedraw(true);
         }
@@ -337,16 +309,14 @@ public class ReferenceValueEditor {
                 final String curTextValue = valueController.getValueHandler().getValueDisplayString(
                         ((IAttributeController) valueController).getBinding(),
                         curValue,
-                        DBDDisplayFormat.UI);
+                        DBDDisplayFormat.EDIT);
 
-                TableItem curItem = null;
-                int curItemIndex = -1;
-                TableItem[] items = editorSelector.getItems();
+                TreeItem curItem = null;
+                TreeItem[] items = editorSelector.getItems();
                 for (int i = 0; i < items.length; i++) {
-                    TableItem item = items[i];
+                    TreeItem item = items[i];
                     if (item.getText(0).equals(curTextValue)) {
                         curItem = item;
-                        curItemIndex = i;
                         break;
                     }
                 }
@@ -354,8 +324,7 @@ public class ReferenceValueEditor {
                     editorSelector.setSelection(curItem);
                     editorSelector.showItem(curItem);
                     // Show cur item on top
-                    int finalCurItemIndex = curItemIndex;
-                    UIUtils.asyncExec(() -> editorSelector.setTopIndex(finalCurItemIndex));
+                    editorSelector.setTopItem(curItem);
                 } else {
                     editorSelector.deselectAll();
                 }
@@ -373,7 +342,7 @@ public class ReferenceValueEditor {
         @Override
         public void run() {
             StringBuilder result = new StringBuilder();
-            for (TableItem item : editorSelector.getSelection()) {
+            for (TreeItem item : editorSelector.getSelection()) {
                 if (result.length() > 0) result.append("\n");
                 result.append(item.getText(0));
             }
@@ -382,7 +351,7 @@ public class ReferenceValueEditor {
     }
 
     private class SortListener implements Listener {
-        private TableColumn prevColumn = null;
+        private TreeColumn prevColumn = null;
         private int sortDirection = SWT.DOWN;
 
         public SortListener() {
@@ -390,7 +359,7 @@ public class ReferenceValueEditor {
 
         @Override
         public void handleEvent(Event event) {
-            TableColumn column = (TableColumn) event.widget;
+            TreeColumn column = (TreeColumn) event.widget;
             if (prevColumn == column) {
                 // Set reverse order
                 sortDirection = (sortDirection == SWT.UP ? SWT.DOWN : SWT.UP);
@@ -496,27 +465,22 @@ public class ReferenceValueEditor {
                 final DBSEntityConstraint refConstraint = association.getReferencedConstraint();
                 final DBSDictionary enumConstraint = (DBSDictionary) refConstraint.getParentObject();
                 if (fkAttribute != null && enumConstraint != null) {
-                    try (DBCSession session = valueController.getExecutionContext().openSession(
+                    Collection<DBDLabelValuePair> enumValues = enumConstraint.getDictionaryEnumeration(
                         monitor,
-                        DBCExecutionPurpose.UTIL,
-                        NLS.bind(ResultSetMessages.dialog_value_view_context_name, fkAttribute.getName()))) {
-                        Collection<DBDLabelValuePair> enumValues = enumConstraint.getDictionaryEnumeration(
-                            session,
-                            refColumn,
-                            pattern,
-                            precedingKeys,
-                            sortByValue,
-                            sortAsc,
-                            200);
+                        refColumn,
+                        pattern,
+                        precedingKeys,
+                        sortByValue,
+                        sortAsc,
+                        200);
 //                        for (DBDLabelValuePair pair : enumValues) {
 //                            keyValues.put(pair.getValue(), pair.getLabel());
 //                        }
-                        if (monitor.isCanceled()) {
-                            return null;
-                        }
-                        final DBDValueHandler colHandler = DBUtils.findValueHandler(session, fkAttribute);
-                        return new EnumValuesData(enumValues, fkColumn, colHandler);
+                    if (monitor.isCanceled()) {
+                        return null;
                     }
+                    final DBDValueHandler colHandler = DBUtils.findValueHandler(fkAttribute.getDataSource(), fkAttribute);
+                    return new EnumValuesData(enumValues, fkColumn, colHandler);
                 }
 
             } catch (DBException e) {

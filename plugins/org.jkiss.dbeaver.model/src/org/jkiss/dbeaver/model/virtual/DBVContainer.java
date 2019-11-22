@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
+import org.jkiss.utils.CommonUtils;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -34,6 +35,7 @@ import java.util.Map;
 public class DBVContainer extends DBVObject implements DBSObjectContainer {
 
     static final String ENTITY_PREFIX = ":";
+    static final String CONFIG_PREFIX = "@";
 
     private final DBVContainer parent;
     private String name;
@@ -47,19 +49,6 @@ public class DBVContainer extends DBVObject implements DBSObjectContainer {
         this.name = name;
     }
 
-    // Copy constructor
-    DBVContainer(DBVContainer parent, DBVContainer source) {
-        this.parent = parent;
-        this.name = source.name;
-        this.description = source.description;
-        for (Map.Entry<String, DBVContainer> ce : source.containers.entrySet()) {
-            this.containers.put(ce.getKey(), new DBVContainer(this, ce.getValue()));
-        }
-        for (Map.Entry<String, DBVEntity> ee : source.entities.entrySet()) {
-            this.entities.put(ee.getKey(), new DBVEntity(this, ee.getValue()));
-        }
-    }
-
     DBVContainer(DBVContainer parent, String name, Map<String, Object> map) {
         this.parent = parent;
         this.name = name;
@@ -68,11 +57,28 @@ public class DBVContainer extends DBVObject implements DBSObjectContainer {
             if (id.startsWith(ENTITY_PREFIX)) {
                 DBVEntity entity = new DBVEntity(this, id.substring(ENTITY_PREFIX.length()), (Map<String, Object>) element.getValue());
                 entities.put(entity.getName(), entity);
+            } else if (id.startsWith(CONFIG_PREFIX)) {
+                String configMap = id.substring(CONFIG_PREFIX.length());
+                if (configMap.equals("properties")) {
+                    loadPropertiesFrom(map, id);
+                }
             } else if (element.getValue() instanceof Map) {
                 DBVContainer child = new DBVContainer(this, id, (Map<String, Object>) element.getValue());
                 containers.put(child.getName(), child);
             }
         }
+    }
+
+    synchronized void dispose() {
+        for (DBVEntity entity : entities.values()) {
+            entity.dispose();
+        }
+        entities.clear();
+
+        for (DBVContainer container : containers.values()) {
+            container.dispose();
+        }
+        containers.clear();
     }
 
     public DBSObjectContainer getRealContainer(DBRProgressMonitor monitor) throws DBException {
@@ -124,6 +130,7 @@ public class DBVContainer extends DBVObject implements DBSObjectContainer {
         return true;
     }
 
+    @NotNull
     public Collection<DBVContainer> getContainers() {
         return containers.values();
     }
@@ -141,26 +148,34 @@ public class DBVContainer extends DBVObject implements DBSObjectContainer {
         containers.put(container.getName(), container);
     }
 
+    @NotNull
     public Collection<DBVEntity> getEntities() {
         return entities.values();
     }
 
-    public DBVEntity getEntity(String name, boolean createNew) {
-        String dictName = name;
-        DBVEntity entity = entities.get(dictName);
+    public synchronized DBVEntity getEntity(String name, boolean createNew) {
+        DBVEntity entity = entities.get(name);
         if (entity == null && createNew) {
             entity = new DBVEntity(this, name, (String) null);
-            entities.put(dictName, entity);
+            entities.put(name, entity);
         }
         return entity;
     }
 
-    void addEntity(DBVEntity entity) {
+    synchronized void addEntity(DBVEntity entity) {
         entities.put(entity.getName(), entity);
+    }
+
+    synchronized void removeEntity(DBVEntity entity) {
+        entities.remove(entity.getName());
+        entity.dispose();
     }
 
     @Override
     public boolean hasValuableData() {
+        if (!CommonUtils.isEmpty(getProperties())) {
+            return true;
+        }
         for (DBVEntity entity : getEntities()) {
             if (entity.hasValuableData()) {
                 return true;
@@ -174,22 +189,28 @@ public class DBVContainer extends DBVObject implements DBSObjectContainer {
         return false;
     }
 
-    void copyFrom(DBVContainer container) {
-        this.name = container.name;
+    void copyFrom(DBVContainer container, DBVModel targetModel) {
+        if (container instanceof DBVModel) {
+            this.name = targetModel.getId();
+        } else {
+            this.name = container.name;
+        }
         this.description = container.description;
 
         this.containers.clear();
         for (DBVContainer child : container.getContainers()) {
             DBVContainer myChild = new DBVContainer(this, child.getName());
-            myChild.copyFrom(child);
+            myChild.copyFrom(child, targetModel);
             containers.put(myChild.getName(), myChild);
         }
 
         this.entities.clear();
         for (DBVEntity child : container.getEntities()) {
-            DBVEntity myChild = new DBVEntity(this, child);
+            DBVEntity myChild = new DBVEntity(this, child, targetModel);
             entities.put(myChild.getName(), myChild);
         }
+
+        super.copyFrom(container);
     }
 
     @Override
@@ -212,8 +233,15 @@ public class DBVContainer extends DBVObject implements DBSObjectContainer {
         // do nothing
     }
 
+    void renameEntity(DBVEntity entity, String oldName, String newName) {
+        if (entities.remove(oldName) != null) {
+            entities.put(newName, entity);
+        }
+    }
+
     @Override
     public String toString() {
         return name;
     }
+
 }

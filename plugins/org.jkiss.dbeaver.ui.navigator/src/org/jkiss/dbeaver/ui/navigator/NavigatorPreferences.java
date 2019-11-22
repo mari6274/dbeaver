@@ -25,12 +25,14 @@ public class NavigatorPreferences {
 
     public static final String NAVIGATOR_COLOR_ALL_NODES = "navigator.color.nodes.all"; //$NON-NLS-1$
     public static final String NAVIGATOR_EXPAND_ON_CONNECT = "navigator.expand.on.connect"; //$NON-NLS-1$
+    public static final String NAVIGATOR_RESTORE_STATE_DEPTH = "navigator.restore.state.depth"; //$NON-NLS-1$
     public static final String NAVIGATOR_SYNC_EDITOR_DATASOURCE = "navigator.sync.editor.datasource"; //$NON-NLS-1$
     public static final String NAVIGATOR_REFRESH_EDITORS_ON_OPEN = "navigator.refresh.editor.open"; //$NON-NLS-1$
     public static final String NAVIGATOR_GROUP_BY_DRIVER = "navigator.group.by.driver"; //$NON-NLS-1$
     public static final String NAVIGATOR_EDITOR_SHOW_TABLE_GRID = "navigator.editor.showGrid"; //$NON-NLS-1$
     public static final String NAVIGATOR_OBJECT_DOUBLE_CLICK = "navigator.object.doubleClick"; //$NON-NLS-1$
     public static final String NAVIGATOR_CONNECTION_DOUBLE_CLICK = "navigator.connection.doubleClick"; //$NON-NLS-1$
+    public static final String NAVIGATOR_DEFAULT_EDITOR_PAGE = "navigator.object.defaultEditorPage"; //$NON-NLS-1$
     public static final String NAVIGATOR_SHOW_SQL_PREVIEW = "navigator.editor.show.preview"; //$NON-NLS-1$
     public static final String NAVIGATOR_SHOW_OBJECT_TIPS = "navigator.show.objects.tips"; //$NON-NLS-1$
     public static final String NAVIGATOR_LONG_LIST_FETCH_SIZE = "navigator.long.list.fetch.size"; //$NON-NLS-1$
@@ -48,4 +50,11 @@ public class NavigatorPreferences {
 
     public static final int MIN_LONG_LIST_FETCH_SIZE = 100;
 
+    public enum DoubleClickBehavior {
+        EDIT,
+        CONNECT,
+        SQL_EDITOR,
+        EXPAND,
+        SQL_EDITOR_NEW
+    }
 }

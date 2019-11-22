@@ -100,6 +100,11 @@ public class GenericSQLDialect extends JDBCSQLDialect {
     }
 
     @Override
+    public boolean supportsAliasInSelect() {
+        return super.supportsAliasInSelect();
+    }
+
+    @Override
     public boolean isDelimiterAfterQuery() {
         return hasDelimiterAfterQuery;
     }
@@ -149,6 +154,7 @@ public class GenericSQLDialect extends JDBCSQLDialect {
         return dualTable;
     }
 
+    @NotNull
     @Override
     public String getSearchStringEscape() {
         if (useSearchStringEscape) {

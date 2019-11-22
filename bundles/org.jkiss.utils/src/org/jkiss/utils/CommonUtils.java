@@ -130,7 +130,7 @@ public class CommonUtils {
 
     public static String toCamelCase(String str) {
         if (isEmpty(str)) {
-            return null;
+            return str;
         }
 
         final StringBuilder ret = new StringBuilder(str.length());
@@ -275,6 +275,21 @@ public class CommonUtils {
         return equalObjects(s1, s2) || (isEmpty(s1) && isEmpty(s2));
     }
 
+    public static boolean equalsContents(@Nullable Collection<?> c1, @Nullable Collection<?> c2) {
+        if (CommonUtils.isEmpty(c1) && CommonUtils.isEmpty(c2)) {
+            return true;
+        }
+        if (c1 == null || c2 == null || c1.size() != c2.size()) {
+            return false;
+        }
+        for (Object o : c1) {
+            if (!c2.contains(o)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @NotNull
     public static String toString(@Nullable Object object) {
         if (object == null) {
@@ -309,7 +324,11 @@ public class CommonUtils {
             try {
                 return Integer.parseInt(toString(object));
             } catch (NumberFormatException e) {
-                return def;
+                try {
+                    return (int)Double.parseDouble(toString(object));
+                } catch (NumberFormatException e1) {
+                    return def;
+                }
             }
         }
     }
@@ -345,7 +364,11 @@ public class CommonUtils {
             try {
                 return Long.parseLong(toString(object));
             } catch (NumberFormatException e) {
-                return defValue;
+                try {
+                    return (int)Double.parseDouble(toString(object));
+                } catch (NumberFormatException e1) {
+                    return defValue;
+                }
             }
         }
     }

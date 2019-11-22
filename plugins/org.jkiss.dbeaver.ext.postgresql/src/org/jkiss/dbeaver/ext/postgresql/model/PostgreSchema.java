@@ -33,7 +33,6 @@ import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectLookupCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCStructLookupCache;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCTable;
-import org.jkiss.dbeaver.model.impl.sql.edit.struct.SQLTableManager;
 import org.jkiss.dbeaver.model.meta.Association;
 import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -46,7 +45,10 @@ import org.jkiss.utils.CommonUtils;
 import java.lang.reflect.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -347,6 +349,10 @@ public class PostgreSchema implements DBSSchema, PostgreTableContainer, DBPNamed
         return name;
     }
 
+    public boolean isPublicSchema() {
+        return PostgreConstants.PUBLIC_SCHEMA_NAME.equals(name);
+    }
+
     public boolean isCatalogSchema() {
         return PostgreConstants.CATALOG_SCHEMA_NAME.equals(name);
     }
@@ -391,50 +397,17 @@ public class PostgreSchema implements DBSSchema, PostgreTableContainer, DBPNamed
 
             if (!monitor.isCanceled()) {
                 Collection<PostgreTableBase> tablesOrViews = tableCache.getAllObjects(monitor, this);
-                List<PostgreTableBase> goodTableList = new ArrayList<>();
-                List<PostgreTableBase> cycleTableList = new ArrayList<>();
-                List<PostgreTableBase> viewList = new ArrayList<>();
 
-                {
-                    List<PostgreTableBase> allTables = new ArrayList<>();
-                    monitor.beginTask("Load tables and views", tablesOrViews.size());
-                    for (PostgreTableBase tableOrView : tablesOrViews) {
-                        monitor.subTask(tableOrView.getName());
-                        if (tableOrView instanceof PostgreSequence) {
-                            addDDLLine(sql, tableOrView.getObjectDefinitionText(monitor, options));
-                        } else {
-                            allTables.add(tableOrView);
-                        }
-                        monitor.worked(1);
-                        if (monitor.isCanceled()) {
-                            break;
-                        }
-                    }
-                    DBStructUtils.sortTableList(allTables, goodTableList, cycleTableList, viewList);
-                }
-
-                // Good tables: generate full DDL
-                for (PostgreTableBase table : goodTableList) {
-                    addDDLLine(sql, DBStructUtils.generateTableDDL(monitor, table, options, false));
-                }
-                {
-                    // Cycle tables: generate CREATE TABLE and CREATE FOREIGN KEY separately
-                    Map<String, Object> optionsNoFK = new HashMap<>(options);
-                    optionsNoFK.put(SQLTableManager.OPTION_DDL_SKIP_FOREIGN_KEYS, true);
-                    for (PostgreTableBase table : cycleTableList) {
-                        addDDLLine(sql, DBStructUtils.generateTableDDL(monitor, table, optionsNoFK, false));
-                    }
-                    Map<String, Object> optionsOnlyFK = new HashMap<>(options);
-                    optionsOnlyFK.put(SQLTableManager.OPTION_DDL_ONLY_FOREIGN_KEYS, true);
-                    for (PostgreTableBase table : cycleTableList) {
-                        addDDLLine(sql, DBStructUtils.generateTableDDL(monitor, table, optionsOnlyFK, false));
+                List<PostgreTableBase> allTables = new ArrayList<>();
+                for (PostgreTableBase tableOrView : tablesOrViews) {
+                    monitor.subTask(tableOrView.getName());
+                    if (tableOrView instanceof PostgreSequence) {
+                        addDDLLine(sql, tableOrView.getObjectDefinitionText(monitor, options));
+                    } else {
+                        allTables.add(tableOrView);
                     }
                 }
-                // Views: generate them after all tables.
-                // TODO: find view dependencies and generate them in right order
-                for (PostgreTableBase table : viewList) {
-                    addDDLLine(sql, DBStructUtils.generateTableDDL(monitor, table, options, false));
-                }
+                DBStructUtils.generateTableListDDL(monitor, sql, allTables, options, false);
                 monitor.done();
             }
             if (!monitor.isCanceled()) {
@@ -596,7 +569,7 @@ public class PostgreSchema implements DBSSchema, PostgreTableContainer, DBPNamed
             }
 
             JDBCPreparedStatement dbStat = session.prepareStatement(
-                "SELECT c.relname,a.*,ad.oid as attr_id,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description" +
+                "SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description" +
                     getTableColumnsQueryExtraParameters(container.getSchema(), forTable) +
                     "\nFROM pg_catalog.pg_attribute a" +
                     "\nINNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)" +
@@ -903,13 +876,15 @@ public class PostgreSchema implements DBSSchema, PostgreTableContainer, DBPNamed
         @NotNull
         @Override
         public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull PostgreSchema owner, @Nullable PostgreProcedure object, @Nullable String objectName) throws SQLException {
+            PostgreServerExtension serverType = owner.getDataSource().getServerType();
+            String oidColumn = serverType.getProceduresOidColumn(); // Hack for Redshift SP support
             JDBCPreparedStatement dbStat = session.prepareStatement(
-                "SELECT p.oid,p.*," +
+                "SELECT p." + oidColumn + ",p.*," +
                     (session.getDataSource().isServerVersionAtLeast(8, 4) ? "pg_catalog.pg_get_expr(p.proargdefaults, 0)" : "NULL") + " as arg_defaults,d.description\n" +
-                    "FROM pg_catalog.pg_proc p\n" +
-                    "LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=p.oid\n" +
+                    "FROM pg_catalog." + serverType.getProceduresSystemTable() + " p\n" +
+                    "LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=p." + oidColumn + "\n" +
                     "WHERE p.pronamespace=?" +
-                    (object == null ? "" : " AND p.oid=?") +
+                    (object == null ? "" : " AND p." + oidColumn + "=?") +
                     "\nORDER BY p.proname"
             );
             dbStat.setLong(1, owner.getObjectId());

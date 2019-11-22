@@ -18,12 +18,14 @@ package org.jkiss.dbeaver.ui.controls.resultset;
 
 import org.eclipse.jface.dialogs.ControlEnableState;
 import org.eclipse.jface.dialogs.IDialogConstants;
-import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.preference.ColorSelector;
 import org.eclipse.jface.resource.StringConverter;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
@@ -36,11 +38,11 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBValueFormatting;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDDisplayFormat;
-import org.jkiss.dbeaver.model.data.DBDValueDefaultGenerator;
 import org.jkiss.dbeaver.model.exec.DBCLogicalOperator;
 import org.jkiss.dbeaver.model.virtual.DBVColorOverride;
 import org.jkiss.dbeaver.model.virtual.DBVEntity;
 import org.jkiss.dbeaver.model.virtual.DBVUtils;
+import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.data.IValueEditor;
@@ -57,15 +59,20 @@ import java.util.List;
 class ColorSettingsDialog extends BaseDialog {
 
     private static final Log log = Log.getLog(ColorSettingsDialog.class);
-    private static final String DIALOG_ID = "DBeaver.ColorSettingsDialog";//$NON-NLS-1$
+
+    private static final String DIALOG_ID = "DBeaver.ColorSettingsDialog2";//$NON-NLS-1$
+
     private static RGB DEFAULT_RGB;
 
     @NotNull
     private final ResultSetViewer resultSetViewer;
-    @NotNull
-    private final DBDAttributeBinding attribute;
     @Nullable
-    private final ResultSetRow row;
+    private DBDAttributeBinding attribute;
+    @Nullable
+    private ResultSetRow row;
+
+    private final DBVEntity vEntitySrc;
+    private final DBVEntity vEntity;
 
     private Table colorsTable;
     private Button rangeCheck;
@@ -82,96 +89,189 @@ class ColorSettingsDialog extends BaseDialog {
     private Button singleColumnCheck;
 
     private DBVColorOverride curOverride;
+    private ToolItem btnDelete;
+    private Table attributeTable;
 
-    public ColorSettingsDialog(
+    private Composite editorPlaceholder1;
+    private Composite editorPlaceholder2;
+
+    ColorSettingsDialog(
         @NotNull ResultSetViewer resultSetViewer,
-        @NotNull final DBDAttributeBinding attr,
-        @Nullable final ResultSetRow row) {
+        @Nullable final DBDAttributeBinding attr,
+        @Nullable final ResultSetRow row)
+    {
         super(resultSetViewer.getControl().getShell(), "Customize colors for [" + attr.getName() + "]", UIIcon.PALETTE);
         this.resultSetViewer = resultSetViewer;
         this.attribute = attr;
         this.row = row;
+        this.vEntitySrc = DBVUtils.getVirtualEntity(resultSetViewer.getDataContainer(), true);
+        this.vEntity = new DBVEntity(vEntitySrc.getContainer(), vEntitySrc, vEntitySrc.getModel());
 
         DEFAULT_RGB = resultSetViewer.getControl().getDisplay().getSystemColor(SWT.COLOR_WIDGET_BACKGROUND).getRGB();
     }
 
+/*
     @Override
     protected IDialogSettings getDialogBoundsSettings() {
         return UIUtils.getDialogSettings(DIALOG_ID);
     }
+*/
 
     @Override
     protected Composite createDialogArea(Composite parent) {
-        Composite composite = (Composite) super.createDialogArea(parent);
-        Composite mainGroup = new Composite(composite, SWT.NONE);
-        mainGroup.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_BOTH));
-        mainGroup.setLayout(new GridLayout(2, false));
+        Composite composite = super.createDialogArea(parent);
 
-        GridData gd;
-/*
-        gd.horizontalSpan = 2;
-        Composite titlePanel = UIUtils.createComposite(mainGroup, 2);
-        titlePanel.setLayoutData(gd);
-        UIUtils.createLabelText(titlePanel, "Attribute", attribute.getName(), SWT.BORDER | SWT.READ_ONLY);
-*/
+        SashForm divider = new SashForm(composite, SWT.HORIZONTAL);
+        divider.setSashWidth(10);
+        divider.setLayoutData(new GridData(GridData.FILL_BOTH));
+        createAttributeSelectorArea(divider);
+        createAttributeSettingsArea(divider);
 
-        {
-            Composite colorsGroup = new Composite(mainGroup, SWT.NONE);
-            colorsGroup.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_BOTH));
-            colorsGroup.setLayout(new GridLayout(1, false));
+        updateAttributeSelection();
 
-            UIUtils.createControlLabel(colorsGroup, "Cell conditions");
+        return parent;
+    }
 
-            colorsTable = new Table(colorsGroup, SWT.BORDER | SWT.FULL_SELECTION);
-            //colorsTable.setHeaderVisible(true);
-            gd = new GridData(GridData.FILL_BOTH);
-            gd.widthHint = 300;
-            colorsTable.setLayoutData(gd);
-            UIUtils.createTableColumn(colorsTable, SWT.LEFT, "Operator");
-            UIUtils.createTableColumn(colorsTable, SWT.RIGHT, "Value(s)");
-            UIUtils.executeOnResize(colorsTable, () -> UIUtils.packColumns(colorsTable, true));
+    private void createAttributeSelectorArea(Composite composite) {
+        Composite panel = UIUtils.createComposite(composite, 1);
 
-            DBVEntity vEntity = DBVUtils.getVirtualEntity(attribute, true);
-            //DBVEntityAttribute vAttr = vEntity.getVirtualAttribute(attribute, true);
+        attributeTable = new Table(panel, SWT.FULL_SELECTION | SWT.BORDER);
+        attributeTable.setHeaderVisible(true);
+        GridData gd = new GridData(GridData.FILL_BOTH);
+        gd.widthHint = 400;
+        attributeTable.setLayoutData(gd);
+        UIUtils.executeOnResize(attributeTable, () -> UIUtils.packColumns(attributeTable, true));
+
+        UIUtils.createTableColumn(attributeTable, SWT.LEFT, "Name");
+        UIUtils.createTableColumn(attributeTable, SWT.LEFT, "Colors");
+
+        for (DBDAttributeBinding attr : resultSetViewer.getModel().getVisibleAttributes()) {
+            TableItem attrItem = new TableItem(attributeTable, SWT.NONE);;
+            attrItem.setData(attr);
+            attrItem.setText(0, attr.getName());
+            attrItem.setImage(0, DBeaverIcons.getImage(DBValueFormatting.getObjectImage(attr, true)));
+
+            if (this.attribute == attr) {
+                attributeTable.setSelection(attrItem);
+            }
+            //updateColumnItem(attrItem);
+        }
+
+        attributeTable.addListener(SWT.PaintItem, event -> {
+            if (event.index == 1) {
+
+                int x = event.x + 4;
+                DBDAttributeBinding attr = (DBDAttributeBinding) event.item.getData();
+                List<DBVColorOverride> coList = vEntity.getColorOverrides(attr.getName());
+                if (!coList.isEmpty()) {
+                    for (DBVColorOverride co : coList) {
+                        List<String> coStrings = new ArrayList<>();
+                        if (co.getAttributeValues() != null) {
+                            for (Object value : co.getAttributeValues()) {
+                                coStrings.add(CommonUtils.toString(value));
+                            }
+                        }
+                        //String colorSettings = "   ";//String.join(", ", coStrings);
+                        //Point textSize = event.gc.stringExtent(colorSettings);
+                        int boxSize = attributeTable.getItemHeight() - 4;
+                        Point textSize = new Point(boxSize, boxSize);
+                        Color fg = attributeTable.getDisplay().getSystemColor(SWT.COLOR_WIDGET_NORMAL_SHADOW);//getColorTableForeground(co);
+                        Color bg = getColorTableBackground(co);
+                        if (fg != null) event.gc.setForeground(fg);
+                        if (bg != null) event.gc.setBackground(bg);
+
+                        event.gc.fillRectangle(x, event.y + 2, textSize.x, textSize.y);
+                        event.gc.drawRectangle(x, event.y + 2, textSize.x - 1, textSize.y - 1);
+                        //event.gc.drawText(colorSettings, x, event.y);
+                        x += textSize.x + 4;
+                    }
+                }
+            }
+        });
+        attributeTable.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                updateAttributeSelection();
+            }
+        });
+    }
+
+    private void updateAttributeSelection() {
+        TableItem[] selection = attributeTable.getSelection();
+        if (selection.length == 0) {
+            attribute = null;
+        } else {
+            attribute = (DBDAttributeBinding) selection[0].getData();
+        }
+
+        colorsTable.removeAll();
+        if (attribute == null) {
+            // Nothing to load
+            curOverride = null;
+            colorOverrides = null;
+        } else {
             colorOverrides = vEntity.getColorOverrides(attribute.getName());
             if (colorOverrides == null) {
                 colorOverrides = new ArrayList<>();
             }
+
             for (DBVColorOverride co : colorOverrides) {
                 TableItem tableItem = new TableItem(colorsTable, SWT.NONE);
                 tableItem.setData(co);
-                updateTreeItem(tableItem);
+                updateColorItem(tableItem);
             }
+            if (!colorOverrides.isEmpty()) {
+                curOverride = colorOverrides.get(0);
+                colorsTable.setSelection(0);
+            } else {
+                curOverride = null;
+            }
+        }
 
-            //ToolBar toolbar = new ToolBar(colorsGroup, SWT.FLAT | SWT.HORIZONTAL);
-            Composite buttonsPanel = UIUtils.createComposite(colorsGroup, 2);
-            Button btnAdd = createButton(buttonsPanel, 1000, "Add", false);
-            btnAdd.addSelectionListener(new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
-                    curOverride = new DBVColorOverride(attribute.getName(), DBCLogicalOperator.EQUALS, null, null, null);
-                    vEntity.addColorOverride(curOverride);
-                    TableItem tableItem = new TableItem(colorsTable, SWT.NONE);
-                    tableItem.setData(curOverride);
-                    colorsTable.setSelection(tableItem);
-                    updateTreeItem(tableItem);
-                    updateSettingsValues();
-                    updateControlsState();
-                }
-            });
-            Button btnDelete = createButton(buttonsPanel, 1001, "Delete", false);
-            btnDelete.addSelectionListener(new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
-                    if (curOverride != null) {
-                        colorsTable.getItem(colorsTable.getSelectionIndex()).dispose();
-                        vEntity.removeColorOverride(curOverride);
-                        curOverride = null;
-                        updateSettingsValues();
-                        updateControlsState();
+        updateControlsState();
+    }
+
+    private void createAttributeSettingsArea(Composite composite) {
+        Composite mainGroup = UIUtils.createComposite(composite, 1);
+        mainGroup.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_BOTH));
+
+        {
+            Composite colorsGroup = UIUtils.createComposite(mainGroup, 2);
+            colorsGroup.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_BOTH));
+
+            //UIUtils.createControlLabel(colorsGroup, "Cell conditions");
+
+            colorsTable = new Table(colorsGroup, SWT.BORDER | SWT.FULL_SELECTION);
+            GridData gd = new GridData(GridData.FILL_BOTH);
+            gd.widthHint = 300;
+            gd.heightHint = 100;
+            colorsTable.setLayoutData(gd);
+
+            colorsTable.addListener(SWT.EraseItem, event -> {
+                if ((event.detail & SWT.SELECTED) != 0) {
+                    //event.detail &= ~SWT.SELECTED;
+                    Color bgColor = getColorTableBackground((DBVColorOverride) event.item.getData());
+                    if (bgColor != null) {
+                        event.gc.setBackground(bgColor);
+                    } else {
+                        event.gc.setBackground(colorsTable.getBackground());
                     }
+                    event.gc.fillRectangle(event.x, event.y, event.width, event.height);
+                    event.gc.drawRectangle(event.x, event.y, event.width - 1, event.height - 1);
                 }
             });
+/*
+            colorsTable.addListener(SWT.PaintItem, event -> {
+                if ((event.detail & SWT.SELECTED) == 0) {
+                    return;
+                }
+                event.gc.drawText(((TableItem) event.item).getText(), event.x, event.y);
+            });
+*/
+
+            //UIUtils.createTableColumn(colorsTable, SWT.LEFT, "Operator");
+            UIUtils.createTableColumn(colorsTable, SWT.RIGHT, "Value(s)");
+            UIUtils.executeOnResize(colorsTable, () -> UIUtils.packColumns(colorsTable, true));
 
             colorsTable.addSelectionListener(new SelectionAdapter() {
                 @Override
@@ -179,17 +279,46 @@ class ColorSettingsDialog extends BaseDialog {
                     int selectionIndex = colorsTable.getSelectionIndex();
                     curOverride = selectionIndex < 0 ? null : (DBVColorOverride) colorsTable.getItem(selectionIndex).getData();
                     btnDelete.setEnabled(selectionIndex >= 0);
-                    updateSettingsValues();
                     updateControlsState();
                 }
             });
+
+            {
+                ToolBar buttonsPanel = new ToolBar(colorsGroup, SWT.FLAT | SWT.VERTICAL);
+                buttonsPanel.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING));
+                ToolItem btnAdd = UIUtils.createToolItem(buttonsPanel, "Add", UIIcon.ROW_ADD, new SelectionAdapter() {
+                    @Override
+                    public void widgetSelected(SelectionEvent e) {
+                        curOverride = new DBVColorOverride(attribute.getName(), DBCLogicalOperator.EQUALS, null, null, null);
+                        vEntity.addColorOverride(curOverride);
+                        TableItem tableItem = new TableItem(colorsTable, SWT.NONE);
+                        tableItem.setData(curOverride);
+                        colorsTable.setSelection(tableItem);
+                        updateColorItem(tableItem);
+                        updateControlsState();
+                    }
+                });
+                btnDelete = UIUtils.createToolItem(buttonsPanel, "Delete", UIIcon.ROW_DELETE, new SelectionAdapter() {
+                    @Override
+                    public void widgetSelected(SelectionEvent e) {
+                        if (curOverride != null) {
+                            colorsTable.getItem(colorsTable.getSelectionIndex()).dispose();
+                            vEntity.removeColorOverride(curOverride);
+                            curOverride = null;
+                            updateControlsState();
+                        }
+                    }
+                });
+                btnDelete.setEnabled(false);
+            }
+
         }
 
         {
             settingsGroup = new Composite(mainGroup, SWT.NONE);
-            settingsGroup.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_BOTH));
+            settingsGroup.setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING | GridData.FILL_HORIZONTAL   ));
             settingsGroup.setLayout(new GridLayout(3, false));
-            gd = new GridData();
+            GridData gd = new GridData();
             gd.horizontalSpan = 3;
             UIUtils.createControlLabel(settingsGroup, "Settings").setLayoutData(gd);
 
@@ -197,10 +326,10 @@ class ColorSettingsDialog extends BaseDialog {
             rangeCheck.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
-                    updateControlsState();
                     if (curOverride != null) {
                         curOverride.setRange(rangeCheck.getSelection());
                     }
+                    updateControlsState();
                 }
             });
             singleColumnCheck = UIUtils.createCheckbox(settingsGroup, "Apply colors to this column only", "Apply colors to this column only, otherwise color full row", false, 3);
@@ -214,8 +343,16 @@ class ColorSettingsDialog extends BaseDialog {
             });
 
             UIUtils.createControlLabel(settingsGroup, "Value(s)");
-            valueEditor1 = createValueEditor(settingsGroup, 0);
-            valueEditor2 = createValueEditor(settingsGroup, 1);
+
+            editorPlaceholder1 = new Composite(settingsGroup, SWT.NONE);
+            editorPlaceholder1.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+            editorPlaceholder1.setLayout(new FillLayout());
+            editorPlaceholder2 = new Composite(settingsGroup, SWT.NONE);
+            editorPlaceholder2.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+            editorPlaceholder2.setLayout(new FillLayout());
+
+            valueEditor1 = createValueEditor(editorPlaceholder1, 0);
+            valueEditor2 = createValueEditor(editorPlaceholder2, 1);
 
             UIUtils.createControlLabel(settingsGroup, "Background");
             bgColorSelector1 = new ColorSelector(settingsGroup);
@@ -244,17 +381,17 @@ class ColorSettingsDialog extends BaseDialog {
                 "To use gradient set minimum and maximum\ncolumn values and two\ncolors for gradient range. ",
                 GridData.FILL_HORIZONTAL, 3);
         }
-
-        updateControlsState();
-
-        return parent;
     }
 
     private void updateSettingsValues() {
         try {
             if (curOverride == null) {
-                if (valueEditor1 != null) valueEditor1.primeEditorValue(null);
-                if (valueEditor2 != null) valueEditor2.primeEditorValue(null);
+                UIUtils.disposeChildControls(editorPlaceholder1);
+                new Text(editorPlaceholder1, SWT.BORDER);
+                UIUtils.disposeChildControls(editorPlaceholder2);
+                new Text(editorPlaceholder2, SWT.BORDER);
+                valueEditor1 = null;
+                valueEditor2 = null;
                 rangeCheck.setSelection(false);
                 singleColumnCheck.setSelection(false);
                 bgColorSelector1.setColorValue(DEFAULT_RGB);
@@ -264,6 +401,10 @@ class ColorSettingsDialog extends BaseDialog {
             } else {
                 rangeCheck.setSelection(curOverride.isRange());
                 singleColumnCheck.setSelection(curOverride.isSingleColumn());
+
+                valueEditor1 = createValueEditor(editorPlaceholder1, 0);
+                valueEditor2 = createValueEditor(editorPlaceholder2, 1);
+
                 Object[] values = curOverride.getAttributeValues();
                 if (valueEditor1 != null) {
                     valueEditor1.primeEditorValue(ArrayUtils.isEmpty(values) ? null : values[0]);
@@ -294,6 +435,8 @@ class ColorSettingsDialog extends BaseDialog {
                     }
                 }
             }
+            settingsGroup.layout(true, true);
+            updateCurrentTreeItem();
         } catch (DBException e) {
             log.error(e);
         }
@@ -301,11 +444,15 @@ class ColorSettingsDialog extends BaseDialog {
 
     private void updateControlsState() {
         if (curOverride == null) {
-            settingsEnableState = ControlEnableState.disable(settingsGroup);
+            if (settingsEnableState == null) {
+                settingsEnableState = ControlEnableState.disable(settingsGroup);
+            }
         } else if (settingsEnableState != null) {
             settingsEnableState.restore();
             settingsEnableState = null;
         }
+
+        updateSettingsValues();
 
         boolean isRange = rangeCheck.getSelection();
         if (valueEditor2 != null) {
@@ -313,12 +460,18 @@ class ColorSettingsDialog extends BaseDialog {
         }
         bgColorSelector2.setEnabled(isRange);
         fgColorSelector2.setEnabled(isRange);
+
+        colorsTable.setEnabled(attribute != null);
+        btnDelete.setEnabled(colorsTable.getSelectionIndex() >= 0);
+
     }
 
-    private IValueEditor createValueEditor(Composite panel, int index) {
+    private IValueEditor createValueEditor(Composite editorPlaceholder, int index) {
         try {
+            UIUtils.disposeChildControls(editorPlaceholder);
+
             IValueManager valueManager = ValueManagerRegistry.findValueManager(
-                resultSetViewer.getDataContainer().getDataSource(),
+                resultSetViewer.getDataSource(),
                 attribute,
                 attribute.getValueHandler().getValueObjectType(attribute));
             ColorValueController valueController = new ColorValueController(settingsGroup) {
@@ -335,9 +488,6 @@ class ColorSettingsDialog extends BaseDialog {
                 }
             };
 
-            Composite editorPlaceholder = new Composite(panel, SWT.NONE);
-            editorPlaceholder.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-            editorPlaceholder.setLayout(new FillLayout());
             valueController.setInlinePlaceholder(editorPlaceholder);
 
             IValueEditor editor = valueManager.createEditor(valueController);
@@ -366,6 +516,7 @@ class ColorSettingsDialog extends BaseDialog {
                             attributeValues[index] = value;
                             curOverride.setAttributeValues(attributeValues);
                             updateCurrentTreeItem();
+                            //updateColumnItem(attributeTable.getSelection()[0]);
                         } catch (Exception e) {
                             log.error(e);
                         }
@@ -380,26 +531,56 @@ class ColorSettingsDialog extends BaseDialog {
     }
 
     private void updateCurrentTreeItem() {
-        updateTreeItem(colorsTable.getItem(colorsTable.getSelectionIndex()));
+        int itemIndex = colorsTable.getSelectionIndex();
+        if (itemIndex >= 0) {
+            updateColorItem(colorsTable.getItem(itemIndex));
+        }
+        attributeTable.redraw();
+        //colorsTable.getColumn(0).setWidth(colorsTable.getSize().x);
     }
 
-    private void updateTreeItem(TableItem tableItem) {
+    private void updateColorItem(TableItem tableItem) {
         DBVColorOverride co = (DBVColorOverride) tableItem.getData();
-        tableItem.setText(0, co.getOperator().getStringValue());
+        String text;
         Object[] values = co.getAttributeValues();
         if (ArrayUtils.isEmpty(values)) {
-            tableItem.setText(1, "");
+            text = co.getOperator().getStringValue() + " ?";
         } else if (values.length == 1) {
-            tableItem.setText(1, DBValueFormatting.getDefaultValueDisplayString(values[0], DBDDisplayFormat.UI));
+            text = co.getOperator().getStringValue() + " " + DBValueFormatting.getDefaultValueDisplayString(values[0], DBDDisplayFormat.UI);
         } else {
-            tableItem.setText(1, Arrays.toString(values));
+            if (co.isRange()) {
+                text = "In " + Arrays.toString(values);
+            } else {
+                text = co.getOperator().getStringValue() + " " + Arrays.toString(values);
+            }
         }
-        if (!CommonUtils.isEmpty(co.getColorBackground())) {
-            tableItem.setBackground(UIUtils.getSharedColor(co.getColorBackground()));
-        }
+        tableItem.setText(0, text);
+        tableItem.setForeground(getColorTableForeground((DBVColorOverride) tableItem.getData()));
+        tableItem.setBackground(getColorTableBackground((DBVColorOverride) tableItem.getData()));
+    }
+
+    private Color getColorTableForeground(DBVColorOverride co) {
         if (!CommonUtils.isEmpty(co.getColorForeground())) {
-            tableItem.setForeground(UIUtils.getSharedColor(co.getColorForeground()));
+            return UIUtils.getSharedColor(co.getColorForeground());
         }
+        return null;
+    }
+
+    private Color getColorTableBackground(DBVColorOverride co) {
+        if (!co.isRange()) {
+            if (!CommonUtils.isEmpty(co.getColorBackground())) {
+                return UIUtils.getSharedColor(co.getColorBackground());
+            }
+        } else {
+            String bg1 = co.getColorBackground();
+            String bg2 = co.getColorBackground2();
+            if (!CommonUtils.isEmpty(bg1) && !CommonUtils.isEmpty(bg2)) {
+                Color bg1Color = UIUtils.getSharedColor(bg1);
+                Color bg2Color = UIUtils.getSharedColor(bg2);
+                return UIUtils.getSharedColor(ResultSetUtils.makeGradientValue(bg1Color.getRGB(), bg2Color.getRGB(), 1, 100, 50));
+            }
+        }
+        return null;
     }
 
     @Override
@@ -421,18 +602,35 @@ class ColorSettingsDialog extends BaseDialog {
 
     @Override
     protected void okPressed() {
+
+        vEntitySrc.copyFrom(vEntity, vEntity.getModel());
+        vEntitySrc.persistConfiguration();
         resultSetViewer.getModel().updateColorMapping(true);
+
         super.okPressed();
+    }
+
+    @Override
+    public boolean close() {
+        if (this.vEntity != null) {
+            this.vEntity.dispose();
+        }
+        return super.close();
     }
 
     private class ColorValueController extends ResultSetValueController {
 
-        public ColorValueController(@Nullable Composite inlinePlaceholder) {
+        ColorValueController(@Nullable Composite inlinePlaceholder) {
             super(resultSetViewer, attribute, null, EditType.INLINE, inlinePlaceholder);
         }
 
         void setInlinePlaceholder(Composite ph) {
             inlinePlaceholder = ph;
+        }
+
+        @Override
+        public void updateValue(@Nullable Object value, boolean updatePresentation) {
+            // Do not update
         }
     }
 

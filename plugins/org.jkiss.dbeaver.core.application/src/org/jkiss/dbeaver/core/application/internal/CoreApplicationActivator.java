@@ -17,16 +17,22 @@
 package org.jkiss.dbeaver.core.application.internal;
 
 import org.eclipse.ui.plugin.AbstractUIPlugin;
+import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPMessageType;
 import org.jkiss.dbeaver.runtime.DBeaverNotifications;
 import org.jkiss.dbeaver.ui.notifications.NotificationUtils;
+import org.jkiss.utils.CommonUtils;
+import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.BundleEvent;
+import org.osgi.framework.hooks.bundle.EventHook;
 
 public class CoreApplicationActivator extends AbstractUIPlugin {
 
     // The plug-in ID
     public static final String PLUGIN_ID = "org.jkiss.dbeaver.core.application";
+    private static final Log log = Log.getLog(CoreApplicationActivator.class);
 
     // The shared instance
     private static CoreApplicationActivator plugin;
@@ -49,7 +55,37 @@ public class CoreApplicationActivator extends AbstractUIPlugin {
                 NotificationUtils.sendNotification(id, title, text, messageType, feedback);
             }
         });
+
+        // Add bundle load logger
+        if (!Log.isQuietMode()) {
+            context.registerService(EventHook.class, (event, contexts) -> {
+                String message = null;
+                Bundle bundle = event.getBundle();
+                if (event.getType() == BundleEvent.STARTED) {
+                    if (bundle.getState() == Bundle.ACTIVE) {
+                        message = "> Start " + getBundleName(bundle) + " [" + bundle.getSymbolicName() + " " + bundle.getVersion() + "]";
+                    }
+                } else if (event.getType() == BundleEvent.STOPPING) {
+                    if (bundle.getState() != BundleEvent.STOPPING && bundle.getState() != BundleEvent.UNINSTALLED) {
+                        message = "< Stop " + getBundleName(bundle) + " [" + bundle.getSymbolicName() + " " + bundle.getVersion() + "]";
+                    }
+                }
+                if (message != null) {
+                    log.debug(message);
+                }
+            }, null);
+            //context.addBundleListener(new BundleLoadListener());
+        }
+
         plugin = this;
+    }
+
+    private static String getBundleName(Bundle bundle) {
+        String bundleName = bundle.getHeaders().get("Bundle-Name");
+        if (CommonUtils.isEmpty(bundleName)) {
+            bundleName = bundle.getSymbolicName();
+        }
+        return bundleName;
     }
 
     @Override

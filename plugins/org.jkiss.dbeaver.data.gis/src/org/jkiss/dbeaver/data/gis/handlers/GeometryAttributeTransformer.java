@@ -48,13 +48,13 @@ public class GeometryAttributeTransformer implements DBDAttributeTransformer {
     public static final String GIS_TYPE_NAME = "GIS.Transformed";
 
     @Override
-    public void transformAttribute(@NotNull DBCSession session, @NotNull DBDAttributeBinding attribute, @NotNull List<Object[]> rows, @NotNull Map<String, String> options) throws DBException {
+    public void transformAttribute(@NotNull DBCSession session, @NotNull DBDAttributeBinding attribute, @NotNull List<Object[]> rows, @NotNull Map<String, Object> options) throws DBException {
         attribute.setPresentationAttribute(
             new TransformerPresentationAttribute(attribute, GIS_TYPE_NAME, -1, attribute.getDataKind()));
 
         int srid = CommonUtils.toInt(options.get(PROP_SRID));
         if (srid == 0) {
-            srid = GisConstants.DEFAULT_SRID;
+            srid = GisConstants.SRID_4326;
         }
         boolean invertCoordinates = CommonUtils.toBoolean(options.get(PROP_INVERT_COORDINATES ));
         attribute.setTransformHandler(new GISValueHandler(attribute.getValueHandler(), srid, invertCoordinates));

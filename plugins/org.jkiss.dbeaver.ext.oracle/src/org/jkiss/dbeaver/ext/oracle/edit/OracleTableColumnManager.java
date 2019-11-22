@@ -28,13 +28,13 @@ import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEObjectRenamer;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
 import org.jkiss.dbeaver.model.impl.sql.edit.struct.SQLTableColumnManager;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 
 import java.sql.Types;
 import java.util.List;
@@ -58,6 +58,11 @@ public class OracleTableColumnManager extends SQLTableColumnManager<OracleTableC
     }
 
     @Override
+    public boolean canEditObject(OracleTableColumn object) {
+        return true;
+    }
+
+    @Override
     protected OracleTableColumn createDatabaseObject(DBRProgressMonitor monitor, DBECommandContext context, Object container, Object copyFrom, Map<String, Object> options)
     {
         OracleTableBase table = (OracleTableBase) container;
@@ -75,6 +80,14 @@ public class OracleTableColumnManager extends SQLTableColumnManager<OracleTableC
     }
 
     @Override
+    protected void addObjectCreateActions(DBRProgressMonitor monitor, List<DBEPersistAction> actions, ObjectCreateCommand command, Map<String, Object> options) {
+        super.addObjectCreateActions(monitor, actions, command, options);
+        if (command.getProperty("comment") != null) {
+            addColumnCommentAction(actions, command.getObject());
+        }
+    }
+
+    @Override
     protected void addObjectModifyActions(DBRProgressMonitor monitor, List<DBEPersistAction> actionList, ObjectChangeCommand command, Map<String, Object> options)
     {
         final OracleTableColumn column = command.getObject();
@@ -86,11 +99,15 @@ public class OracleTableColumnManager extends SQLTableColumnManager<OracleTableC
                 " MODIFY " + getNestedDeclaration(monitor, column.getTable(), command, options))); //$NON-NLS-1$
         }
         if (hasComment) {
-            actionList.add(new SQLDatabasePersistAction(
-                "Comment column",
-                "COMMENT ON COLUMN " + column.getTable().getFullyQualifiedName(DBPEvaluationContext.DDL) + "." + DBUtils.getQuotedIdentifier(column) +
-                    " IS '" + column.getComment(new VoidProgressMonitor()) + "'"));
+            addColumnCommentAction(actionList, column);
         }
+    }
+
+    static void addColumnCommentAction(List<DBEPersistAction> actionList, OracleTableColumn column) {
+        actionList.add(new SQLDatabasePersistAction(
+            "Comment column",
+            "COMMENT ON COLUMN " + column.getTable().getFullyQualifiedName(DBPEvaluationContext.DDL) + "." + DBUtils.getQuotedIdentifier(column) +
+                " IS '" + column.getComment(new VoidProgressMonitor()) + "'"));
     }
 
     @Override

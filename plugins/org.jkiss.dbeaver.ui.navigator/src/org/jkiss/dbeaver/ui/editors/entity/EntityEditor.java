@@ -39,6 +39,8 @@ import org.jkiss.dbeaver.model.edit.DBECommand;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.exec.DBCException;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
+import org.jkiss.dbeaver.model.exec.DBExecUtils;
 import org.jkiss.dbeaver.model.impl.edit.DBECommandAdapter;
 import org.jkiss.dbeaver.model.navigator.*;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
@@ -59,7 +61,6 @@ import org.jkiss.dbeaver.ui.controls.folders.ITabbedFolderContainer;
 import org.jkiss.dbeaver.ui.controls.folders.ITabbedFolderListener;
 import org.jkiss.dbeaver.ui.dialogs.ConfirmationDialog;
 import org.jkiss.dbeaver.ui.editors.*;
-import org.jkiss.dbeaver.ui.editors.entity.properties.ObjectPropertiesEditor;
 import org.jkiss.dbeaver.ui.internal.UINavigatorMessages;
 import org.jkiss.dbeaver.ui.navigator.NavigatorPreferences;
 import org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerObjectOpen;
@@ -80,7 +81,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
     public static final String ID = "org.jkiss.dbeaver.ui.editors.entity.EntityEditor"; //$NON-NLS-1$
 
     // fired when editor is initialized with a database object (e.g. after lazy loading, navigation or history browsing).
-    public static final int PROP_OBJECT_INIT = 0x212;
+    private static final int PROP_OBJECT_INIT = 0x212;
     
     private static final Log log = Log.getLog(EntityEditor.class);
 
@@ -226,9 +227,17 @@ public class EntityEditor extends MultiPageDatabaseEditor
             return;
         }
 
+        if (DBUtils.isReadOnly(getDatabaseObject())) {
+            DBWorkbench.getPlatformUI().showMessageBox(
+                "Read-only",
+                "Object [" + DBUtils.getObjectFullName(getDatabaseObject(), DBPEvaluationContext.UI) + "] is read-only",
+                true);
+            return;
+        }
+
         // Flush all nested object editors and result containers
         for (IEditorPart editor : editorMap.values()) {
-            if (editor instanceof ObjectPropertiesEditor || editor instanceof IEntityDataContainer) {
+            if (editor instanceof IEntityStructureEditor || editor instanceof IEntityDataEditor) {
                 if (editor.isDirty()) {
                     editor.doSave(monitor);
                 }
@@ -237,6 +246,8 @@ public class EntityEditor extends MultiPageDatabaseEditor
                 return;
             }
         }
+
+        // Check read-only
 
         // Show preview
         int previewResult = IDialogConstants.PROCEED_ID;
@@ -301,9 +312,29 @@ public class EntityEditor extends MultiPageDatabaseEditor
             log.warn("Null command context");
             return true;
         }
+        DBCExecutionContext executionContext = getExecutionContext();
+        if (executionContext == null) {
+            log.warn("Null execution context");
+            return true;
+        }
         boolean isNewObject = getDatabaseObject() == null || !getDatabaseObject().isPersisted();
+        if (!isNewObject) {
+            // Check for any new nested objects
+            for (DBECommand cmd : commandContext.getFinalCommands()) {
+                if (cmd.getObject() instanceof DBSObject && !((DBSObject) cmd.getObject()).isPersisted()) {
+                    isNewObject = true;
+                    break;
+                }
+            }
+        }
         try {
-            commandContext.saveChanges(monitor, options);
+            DBExecUtils.tryExecuteRecover(monitor, executionContext.getDataSource(), param -> {
+                try {
+                    commandContext.saveChanges(monitor, options);
+                } catch (DBException e) {
+                    throw new InvocationTargetException(e);
+                }
+            });
         } catch (DBException e) {
             error = e;
         }
@@ -322,10 +353,11 @@ public class EntityEditor extends MultiPageDatabaseEditor
             // So we'll get actual data from database
             final DBNDatabaseNode treeNode = getEditorInput().getNavigatorNode();
             try {
+                boolean doRefresh = isNewObject;
                 UIUtils.runInProgressService(monitor1 -> {
                     try {
                         treeNode.refreshNode(monitor1,
-                            isNewObject ? DBNEvent.FORCE_REFRESH : DBNEvent.UPDATE_ON_SAVE);
+                            doRefresh ? DBNEvent.FORCE_REFRESH : DBNEvent.UPDATE_ON_SAVE);
                     } catch (DBException e) {
                         throw new InvocationTargetException(e);
                     }
@@ -466,6 +498,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
         } catch (InvocationTargetException e) {
             log.error(e);
             DBWorkbench.getPlatformUI().showError("Script generate error", "Couldn't generate alter script", e.getTargetException());
+            return IDialogConstants.CANCEL_ID;
         } finally {
             saveInProgress = false;
         }
@@ -481,11 +514,14 @@ public class EntityEditor extends MultiPageDatabaseEditor
     @Override
     protected void createPages()
     {
+        super.createPages();
+
         final IDatabaseEditorInput editorInput = getEditorInput();
         if (editorInput instanceof DatabaseLazyEditorInput) {
             try {
                 addPage(new ProgressEditorPart(this), editorInput);
                 setPageText(0, "Initializing ...");
+                setPageImage(0, DBeaverIcons.getImage(UIIcon.REFRESH));
                 setActivePage(0);
             } catch (PartInitException e) {
                 log.error(e);
@@ -525,8 +561,6 @@ public class EntityEditor extends MultiPageDatabaseEditor
                 EntityEditorPropertyTester.firePropertyChange(EntityEditorPropertyTester.PROP_CAN_REDO);
             }
         });
-
-        super.createPages();
 
         DBSObject databaseObject = editorInput.getDatabaseObject();
         EditorDefaults editorDefaults = null;
@@ -657,12 +691,30 @@ public class EntityEditor extends MultiPageDatabaseEditor
     @Override
     public int promptToSaveOnClose()
     {
+        List<String> changedSubEditors = new ArrayList<>();
+        final DBECommandContext commandContext = getCommandContext();
+        if (commandContext != null && commandContext.isDirty()) {
+            changedSubEditors.add(UINavigatorMessages.registry_entity_editor_descriptor_name);
+        }
+
+        for (IEditorPart editor : editorMap.values()) {
+            if (editor.isDirty()) {
+
+                EntityEditorDescriptor editorDescriptor = EntityEditorsRegistry.getInstance().getEntityEditor(editor);
+                if (editorDescriptor != null) {
+                    changedSubEditors.add(editorDescriptor.getName());
+                }
+            }
+        }
+
+        String subEditorsString = changedSubEditors.isEmpty() ? "" : "(" + String.join(", ", changedSubEditors) + ")";
         final int result = ConfirmationDialog.showConfirmDialog(
             ResourceBundle.getBundle(UINavigatorMessages.BUNDLE_NAME),
             getSite().getShell(),
             NavigatorPreferences.CONFIRM_ENTITY_EDIT_CLOSE,
             ConfirmationDialog.QUESTION_WITH_CANCEL,
-            getEditorInput().getNavigatorNode().getNodeName());
+            getEditorInput().getNavigatorNode().getNodeName(),
+            subEditorsString);
         if (result == IDialogConstants.YES_ID) {
 //            getWorkbenchPart().getSite().getPage().saveEditor(this, false);
             return ISaveablePart2.YES;
@@ -884,6 +936,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
 
 
         return breadcrumbsPanel;
+        //return null;
     }
 
     @Override
@@ -903,6 +956,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
     {
         final DBNDatabaseNode curNode = getEditorInput().getNavigatorNode();
 
+        // FIXME: Drop-downs are too high - lead to minor UI glitches during editor opening. Also they don't make much sense.
         final ToolItem item = new ToolItem(infoGroup, databaseNode instanceof DBNDatabaseFolder ? SWT.DROP_DOWN : SWT.PUSH);
         item.setText(databaseNode.getNodeName());
         item.setImage(DBeaverIcons.getImage(databaseNode.getNodeIconDefault()));
@@ -977,6 +1031,13 @@ public class EntityEditor extends MultiPageDatabaseEditor
         {
             UIServiceSQL serviceSQL = DBWorkbench.getService(UIServiceSQL.class);
             if (serviceSQL != null) {
+//                result = serviceSQL.openGeneratedScriptViewer(
+//                    getExecutionContext(),
+//                    allowSave ? UINavigatorMessages.editors_entity_dialog_persist_title : UINavigatorMessages.editors_entity_dialog_preview_title,
+//                    UIIcon.SQL_PREVIEW,
+//                    scriptGenerator,
+//                    props,
+//                    allowSave);
                 result = serviceSQL.openSQLViewer(
                     getExecutionContext(),
                     allowSave ? UINavigatorMessages.editors_entity_dialog_persist_title : UINavigatorMessages.editors_entity_dialog_preview_title,
@@ -1018,7 +1079,9 @@ public class EntityEditor extends MultiPageDatabaseEditor
                     // Save nested editors
                     ProxyProgressMonitor proxyMonitor = new ProxyProgressMonitor(monitor);
                     for (IEditorPart editor : editorMap.values()) {
-                        editor.doSave(proxyMonitor);
+                        if (editor.isDirty()) {
+                            editor.doSave(proxyMonitor);
+                        }
                         if (monitor.isCanceled()) {
                             success = false;
                             return Status.CANCEL_STATUS;

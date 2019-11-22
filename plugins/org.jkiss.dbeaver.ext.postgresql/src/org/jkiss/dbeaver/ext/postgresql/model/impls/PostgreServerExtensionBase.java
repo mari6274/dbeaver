@@ -47,6 +47,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     }
 
     @Override
+    public boolean supportsTransactions() {
+        return true;
+    }
+
+    @Override
     public boolean supportsOids() {
         return true;
     }
@@ -132,7 +137,7 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     }
 
     @Override
-    public boolean isSupportsLimits() {
+    public boolean supportsResultSetLimits() {
         return true;
     }
 
@@ -175,7 +180,7 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
         } else if (kind == PostgreClass.RelKind.p) {
             return new PostgreTableRegular(schema, dbResult);
         } else {
-            log.warn("Unsupported PostgreClass '" + kind + "'");
+            log.debug("Unsupported PostgreClass '" + kind + "'");
             return null;
         }
     }
@@ -233,8 +238,8 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
                 } catch (DBException e) {
                     log.error(e);
                 }
-                if (tableBase.hasPartitions()) {
-                    ddl.append("\nPARTITION BY ").append(tableBase.getPartKey());
+                if (!CommonUtils.isEmpty(table.getPartitionKey())) {
+                    ddl.append("\nPARTITION BY ").append(table.getPartitionKey());
                 }
             }
             if (tableBase instanceof PostgreTablePartition && !alter) {
@@ -265,9 +270,15 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
         } else if (tableBase instanceof PostgreTableForeign) {
             PostgreTableForeign table = (PostgreTableForeign)tableBase;
             try {
-                PostgreForeignServer foreignServer = table.getForeignServer(monitor);
-                if (foreignServer != null ) {
-                    ddl.append("\nSERVER ").append(DBUtils.getQuotedIdentifier(foreignServer));
+                String foreignServerName = table.getForeignServerName();
+                if (CommonUtils.isEmpty(foreignServerName)) {
+                    PostgreForeignServer foreignServer = table.getForeignServer(monitor);
+                    if (foreignServer != null) {
+                        foreignServerName = DBUtils.getQuotedIdentifier(foreignServer);
+                    }
+                }
+                if (foreignServerName != null ) {
+                    ddl.append("\nSERVER ").append(foreignServerName);
                 }
                 String[] foreignOptions = table.getForeignOptions(monitor);
                 if (!ArrayUtils.isEmpty(foreignOptions)) {
@@ -338,6 +349,26 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
         // It doesn't make sense as PG server doesn't support timezones.
         // Everything is in UTC.
         return false;
+    }
+
+    @Override
+    public boolean supportsTeblespaceLocation() {
+        return dataSource.isServerVersionAtLeast(9, 2);
+    }
+
+    @Override
+    public boolean supportsStoredProcedures() {
+        return dataSource.isServerVersionAtLeast(11, 0);
+    }
+
+    @Override
+    public String getProceduresSystemTable() {
+        return "pg_proc";
+    }
+
+    @Override
+    public String getProceduresOidColumn() {
+        return "oid";
     }
 
     public String createWithClause(PostgreTableRegular table, PostgreTableBase tableBase) {

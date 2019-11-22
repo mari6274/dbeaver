@@ -32,6 +32,7 @@ import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 import org.osgi.framework.Bundle;
 
+import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.util.*;
 
@@ -60,11 +61,12 @@ public class DBeaverCommandLine
     public static final String PARAM_DISCONNECT_ALL = "disconnectAll";
     public static final String PARAM_REUSE_WORKSPACE = "reuseWorkspace";
     public static final String PARAM_NEW_INSTANCE = "newInstance";
+    public static final String PARAM_QUIET = "q";
 
     public final static Options ALL_OPTIONS = new Options()
         .addOption(PARAM_HELP, false, "Help")
 
-        .addOption(PARAM_FILE, "file", true, "File top open")
+        .addOption(PARAM_FILE, "file", true, "Open a file")
         .addOption(PARAM_STOP, "quit", false, "Stop DBeaver running instance")
         .addOption(PARAM_THREAD_DUMP, "thread-dump", false, "Print instance thread dump")
         .addOption(PARAM_CONNECT, "connect", true, "Connects to a specified database")
@@ -72,6 +74,7 @@ public class DBeaverCommandLine
         .addOption(PARAM_CLOSE_TABS, "closeTabs", false, "Close all open editors")
         .addOption(PARAM_REUSE_WORKSPACE, PARAM_REUSE_WORKSPACE, false, "Force workspace reuse (do not show warnings)")
         .addOption(PARAM_NEW_INSTANCE, PARAM_NEW_INSTANCE, false, "Force creating new application instance (do not try to activate already running)")
+        .addOption(PARAM_QUIET, PARAM_QUIET, false, "Run quietly (do not print logs)")
 
         // Eclipse options
         .addOption("product", true, "Product id")
@@ -82,19 +85,14 @@ public class DBeaverCommandLine
         .addOption("registryMultiLanguage", false, "Multi-language mode")
         ;
 
-    public interface ParameterHandler {
-
-        void handleParameter(String name, String value);
-
-    }
-
     private static class ParameterDescriptor {
         String name;
         String longName;
         String description;
         boolean hasArg;
         boolean exitAfterExecute;
-        ParameterHandler handler;
+        boolean reuseWorkspace;
+        CommandLineParameterHandler handler;
 
         public ParameterDescriptor(IConfigurationElement config) throws Exception {
             this.name = config.getAttribute("name");
@@ -102,9 +100,10 @@ public class DBeaverCommandLine
             this.description = config.getAttribute("description");
             this.hasArg = CommonUtils.toBoolean(config.getAttribute("hasArg"));
             this.exitAfterExecute = CommonUtils.toBoolean(config.getAttribute("exitAfterExecute"));
+            this.reuseWorkspace = CommonUtils.toBoolean(config.getAttribute("reuseWorkspace"));
             Bundle cBundle = Platform.getBundle(config.getContributor().getName());
             Class<?> implClass = cBundle.loadClass(config.getAttribute("handler"));
-            handler = (ParameterHandler) implClass.newInstance();
+            handler = (CommandLineParameterHandler) implClass.newInstance();
         }
     }
 
@@ -130,6 +129,15 @@ public class DBeaverCommandLine
         }
     }
 
+    public static List<CommandLineParameterHandler> getRemoteParameterHandlers(CommandLine commandLine) {
+        List<CommandLineParameterHandler> handlers = new ArrayList<>();
+        for (ParameterDescriptor param : customParameters.values()) {
+            if (commandLine.hasOption(param.name) && !(param.handler instanceof Remote)) {
+                handlers.add(param.handler);
+            }
+        }
+        return handlers;
+    }
     /**
      * @return true if called should exit after CLI processing
      */
@@ -166,7 +174,7 @@ public class DBeaverCommandLine
                 if (!ArrayUtils.isEmpty(fileArgs)) {
                     Collections.addAll(fileNames, fileArgs);
                 }
-                controller.openExternalFiles(fileNames.toArray(new String[fileNames.size()]));
+                controller.openExternalFiles(fileNames.toArray(new String[0]));
                 exitAfterExecute = true;
             }
         }
@@ -196,6 +204,16 @@ public class DBeaverCommandLine
             }
         }
 
+        // Reuse workspace if custom parameters are specified
+        for (ParameterDescriptor param : customParameters.values()) {
+            if (param.reuseWorkspace && commandLine.hasOption(param.name)) {
+                if (DBeaverApplication.instance != null) {
+                    DBeaverApplication.instance.reuseWorkspace = true;
+                }
+                break;
+            }
+        }
+
         return exitAfterExecute;
     }
 
@@ -211,8 +229,7 @@ public class DBeaverCommandLine
     /**
      * @return true if application should terminate after this call
      */
-    static boolean handleCommandLine(String instanceLoc) {
-        CommandLine commandLine = getCommandLine();
+    static boolean handleCommandLine(CommandLine commandLine, String instanceLoc) {
         if (commandLine == null || (ArrayUtils.isEmpty(commandLine.getArgs()) && ArrayUtils.isEmpty(commandLine.getOptions()))) {
             return false;
         }
@@ -250,20 +267,26 @@ public class DBeaverCommandLine
         return false;
     }
 
-    public static void handleCustomParameters() {
-        CommandLine commandLine = getCommandLine();
+    public static boolean handleCustomParameters(CommandLine commandLine) {
         if (commandLine == null) {
-            return;
+            return false;
         }
+        boolean exit = false;
         for (ParameterDescriptor param : customParameters.values()) {
-            if (!param.exitAfterExecute) {
-
-            }
             if (commandLine.hasOption(param.name)) {
-                param.handler.handleParameter(
-                    param.name,
-                    param.hasArg ? commandLine.getOptionValue(param.name) : null);
+                try {
+                    param.handler.handleParameter(
+                        param.name,
+                        param.hasArg ? commandLine.getOptionValue(param.name) : null);
+                } catch (Exception e) {
+                    log.error("Error evaluating parameter '" + param.name + "'", e);
+                }
+                if (param.exitAfterExecute) {
+                    exit = true;
+                }
             }
         }
+
+        return exit;
     }
 }

@@ -20,6 +20,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
 import org.jkiss.dbeaver.model.preferences.DBPPropertySource;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -35,6 +36,7 @@ public class PropertySourceCustom implements DBPPropertySource {
     private Map<Object, Object> originalValues = new TreeMap<>();
     private Map<Object, Object> propValues = new TreeMap<>();
     private Map<Object,Object> defaultValues = new TreeMap<>();
+    private IVariableResolver defValueResolver = null;
 
     public PropertySourceCustom()
     {
@@ -44,6 +46,16 @@ public class PropertySourceCustom implements DBPPropertySource {
     {
         addProperties(properties);
         setValues(values);
+    }
+
+    public PropertySourceCustom(DBPPropertyDescriptor[] properties, Map<?, ?> values)
+    {
+        addProperties(properties);
+        setValues(values);
+    }
+
+    public void setDefValueResolver(IVariableResolver defValueResolver) {
+        this.defValueResolver = defValueResolver;
     }
 
     public void setValues(Map<?, ?> values)
@@ -86,11 +98,24 @@ public class PropertySourceCustom implements DBPPropertySource {
         Map<Object, Object> allValues = new HashMap<>(defaultValues);
         allValues.putAll(originalValues);
         allValues.putAll(propValues);
+        if (defValueResolver != null) {
+            for (Map.Entry<Object, Object> prop : allValues.entrySet()) {
+                prop.setValue(getDefaultValue(prop.getValue()));
+            }
+        }
         return allValues;
     }
 
-    public void addProperties(Collection<? extends DBPPropertyDescriptor> properties)
+    public void addProperty(DBPPropertyDescriptor property)
     {
+        props.add(property);
+        final Object defaultValue = property.getDefaultValue();
+        if (defaultValue != null) {
+            defaultValues.put(property.getId(), defaultValue);
+        }
+    }
+
+    public void addProperties(Collection<? extends DBPPropertyDescriptor> properties) {
         props.addAll(properties);
         for (DBPPropertyDescriptor prop : properties) {
             final Object defaultValue = prop.getDefaultValue();
@@ -98,6 +123,23 @@ public class PropertySourceCustom implements DBPPropertySource {
                 defaultValues.put(prop.getId(), defaultValue);
             }
         }
+    }
+
+    public void addProperties(DBPPropertyDescriptor[] properties) {
+        Collections.addAll(props, properties);
+        for (DBPPropertyDescriptor prop : properties) {
+            final Object defaultValue = prop.getDefaultValue();
+            if (defaultValue != null) {
+                defaultValues.put(prop.getId(), defaultValue);
+            }
+        }
+    }
+
+    private Object getDefaultValue(Object defaultValue) {
+        if (defValueResolver != null && defaultValue instanceof String) {
+            return GeneralUtils.replaceVariables((String) defaultValue, defValueResolver);
+        }
+        return defaultValue;
     }
 
     @Override
@@ -108,7 +150,7 @@ public class PropertySourceCustom implements DBPPropertySource {
 
     @Override
     public DBPPropertyDescriptor[] getPropertyDescriptors2() {
-        return props.toArray(new DBPPropertyDescriptor[props.size()]);
+        return props.toArray(new DBPPropertyDescriptor[0]);
     }
 
     @Override
@@ -121,7 +163,10 @@ public class PropertySourceCustom implements DBPPropertySource {
         if (value == null) {
             value = originalValues.get(id);
         }
-        return value != null ? value : defaultValues.get(id);
+        if (value == null) {
+            value = defaultValues.get(id);
+        }
+        return value != null ? getDefaultValue(value) : null;
     }
 
     @Override
@@ -137,8 +182,8 @@ public class PropertySourceCustom implements DBPPropertySource {
         if (value == null) {
             return false;
         }
-        final Object defaultValue = defaultValues.get(id);
-        return !CommonUtils.equalObjects(value, defaultValue);
+        final Object defaultValue = getDefaultValue(defaultValues.get(id));
+        return !CommonUtils.equalObjects(getDefaultValue(value), defaultValue);
     }
 
     @Override
@@ -179,4 +224,11 @@ public class PropertySourceCustom implements DBPPropertySource {
         originalValues.remove(id);
     }
 
+    public void removeAll() {
+        props.clear();
+
+        originalValues.clear();
+        propValues.clear();
+        defaultValues.clear();
+    }
 }

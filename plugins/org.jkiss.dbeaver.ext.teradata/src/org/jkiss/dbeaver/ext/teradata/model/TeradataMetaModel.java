@@ -21,6 +21,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.generic.model.*;
 import org.jkiss.dbeaver.ext.generic.model.meta.GenericMetaModel;
 import org.jkiss.dbeaver.model.DBPDataSource;
+import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDPreferences;
@@ -46,6 +47,11 @@ public class TeradataMetaModel extends GenericMetaModel implements DBDValueHandl
     }
 
     @Override
+    public GenericDataSource createDataSourceImpl(DBRProgressMonitor monitor, DBPDataSourceContainer container) throws DBException {
+        return new GenericDataSource(monitor, container, this, new TeradataSQLDialect());
+    }
+
+    @Override
     public String getTableDDL(DBRProgressMonitor monitor, GenericTableBase sourceObject, Map<String, Object> options) throws DBException {
         GenericDataSource dataSource = sourceObject.getDataSource();
         boolean isView = sourceObject.isView();
@@ -65,6 +71,12 @@ public class TeradataMetaModel extends GenericMetaModel implements DBDValueHandl
         }
     }
 
+    @Override
+    public boolean supportsTableDDLSplit(GenericTableBase sourceObject) {
+        return false;
+    }
+
+    @Override
     public String getViewDDL(DBRProgressMonitor monitor, GenericView sourceObject, Map<String, Object> options) throws DBException {
         return getTableDDL(monitor, sourceObject, options);
     }

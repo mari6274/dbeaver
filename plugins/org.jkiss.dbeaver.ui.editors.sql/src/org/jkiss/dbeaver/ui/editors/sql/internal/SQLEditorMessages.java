@@ -26,6 +26,10 @@ public class SQLEditorMessages extends NLS {
     public static String confirm_close_running_query_message;
     public static String confirm_close_running_query_toggleMessage;
 
+    public static String confirm_close_result_tabs_title;
+    public static String confirm_close_result_tabs_message;
+    public static String confirm_close_result_tabs_toggleMessage;
+
     public static String confirm_dangerous_sql_title;
     public static String confirm_dangerous_sql_message;
     public static String confirm_dangerous_sql_toggleMessage;
@@ -181,6 +185,7 @@ public class SQLEditorMessages extends NLS {
     public static String pref_page_sql_completion_label_use_long_names;
     public static String pref_page_sql_completion_label_insert_space;
     public static String pref_page_sql_completion_label_sort_alphabetically;
+    public static String pref_page_sql_completion_label_insert_table_alias;
     public static String pref_page_sql_completion_label_show_server_help_topics;
     public static String pref_page_sql_completion_label_show_server_help_topics_tip;
     public static String pref_page_sql_completion_group_folding;

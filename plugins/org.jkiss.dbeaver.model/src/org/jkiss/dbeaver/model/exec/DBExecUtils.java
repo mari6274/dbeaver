@@ -25,6 +25,9 @@ import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPErrorAssistant;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
+import org.jkiss.dbeaver.model.edit.DBEPersistAction;
+import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
+import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistActionComment;
 import org.jkiss.dbeaver.model.net.DBWForwarder;
 import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
 import org.jkiss.dbeaver.model.net.DBWHandlerType;
@@ -39,6 +42,7 @@ import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.Authenticator;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,6 +50,8 @@ import java.util.List;
  * Execution utils
  */
 public class DBExecUtils {
+
+    public static final int DEFAULT_READ_FETCH_SIZE = 10000;
 
     private static final Log log = Log.getLog(DBExecUtils.class);
 
@@ -148,8 +154,13 @@ public class DBExecUtils {
                 break;
             } catch (InvocationTargetException e) {
                 lastError = e.getTargetException();
-                if (!recoverEnabled || discoverErrorType(dataSource, lastError) != DBPErrorAssistant.ErrorType.CONNECTION_LOST) {
+                if (!recoverEnabled) {
                     // Can't recover
+                    break;
+                }
+                DBPErrorAssistant.ErrorType errorType = discoverErrorType(dataSource, lastError);
+                if (errorType != DBPErrorAssistant.ErrorType.TRANSACTION_ABORTED && errorType != DBPErrorAssistant.ErrorType.CONNECTION_LOST) {
+                    // Some other error
                     break;
                 }
                 log.debug("Invalidate datasource '" + dataSource.getContainer().getName() + "' connections...");
@@ -162,11 +173,17 @@ public class DBExecUtils {
                     monitor = new VoidProgressMonitor();
                 }
                 if (!monitor.isCanceled()) {
-                    // Do not recover if connection was canceled
-                    InvalidateJob.invalidateDataSource(monitor, dataSource, false,
-                        () -> DBWorkbench.getPlatformUI().openConnectionEditor(dataSource.getContainer()));
-                    if (i < tryCount - 1) {
-                        log.error("Operation failed. Retry count remains = " + (tryCount - i - 1), lastError);
+
+                    if (errorType == DBPErrorAssistant.ErrorType.TRANSACTION_ABORTED) {
+                        // Transaction aborted
+                        InvalidateJob.invalidateTransaction(monitor, dataSource);
+                    } else {
+                        // Do not recover if connection was canceled
+                        InvalidateJob.invalidateDataSource(monitor, dataSource, false,
+                            () -> DBWorkbench.getPlatformUI().openConnectionEditor(dataSource.getContainer()));
+                        if (i < tryCount - 1) {
+                            log.error("Operation failed. Retry count remains = " + (tryCount - i - 1), lastError);
+                        }
                     }
                 }
             } catch (InterruptedException e) {
@@ -183,4 +200,71 @@ public class DBExecUtils {
         }
         return true;
     }
+
+    public static void setStatementFetchSize(DBCStatement dbStat, long firstRow, long maxRows, int fetchSize) {
+        boolean useFetchSize = fetchSize > 0 || dbStat.getSession().getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.RESULT_SET_USE_FETCH_SIZE);
+        if (useFetchSize) {
+            if (fetchSize <= 0) {
+                fetchSize = DEFAULT_READ_FETCH_SIZE;
+            }
+            try {
+                dbStat.setResultsFetchSize(
+                    firstRow < 0 || maxRows <= 0 ? fetchSize : (int) (firstRow + maxRows));
+            } catch (Exception e) {
+                log.warn(e);
+            }
+        }
+    }
+
+    public static void executeScript(DBRProgressMonitor monitor, DBCExecutionContext executionContext, String jobName, List<DBEPersistAction> persistActions) {
+        boolean ignoreErrors = false;
+        monitor.beginTask(jobName, persistActions.size());
+        try (DBCSession session = executionContext.openSession(monitor, DBCExecutionPurpose.UTIL, jobName)) {
+            for (DBEPersistAction action : persistActions) {
+                if (monitor.isCanceled()) {
+                    break;
+                }
+                monitor.subTask(action.getTitle());
+                try {
+                    if (action instanceof SQLDatabasePersistActionComment) {
+                        continue;
+                    }
+                    String script = action.getScript();
+                    if (!CommonUtils.isEmpty(script)) {
+                        try (final Statement statement = ((JDBCSession) session).createStatement()) {
+                            statement.execute(script);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Error executing query", e);
+                    if (ignoreErrors) {
+                        continue;
+                    }
+                    boolean keepRunning = true;
+                    switch (DBWorkbench.getPlatformUI().showErrorStopRetryIgnore(jobName, e, true)) {
+                        case STOP:
+                            keepRunning = false;
+                            break;
+                        case RETRY:
+                            // just make it again
+                            continue;
+                        case IGNORE:
+                            // Just do nothing
+                            break;
+                        case IGNORE_ALL:
+                            ignoreErrors = true;
+                            break;
+                    }
+                    if (!keepRunning) {
+                        break;
+                    }
+                } finally {
+                    monitor.worked(1);
+                }
+            }
+        } finally {
+            monitor.done();
+        }
+    }
+
 }

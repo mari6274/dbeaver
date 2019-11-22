@@ -19,10 +19,7 @@ package org.jkiss.dbeaver.ui;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.jface.action.Action;
-import org.eclipse.jface.action.IAction;
-import org.eclipse.jface.action.IContributionItem;
-import org.eclipse.jface.action.IContributionManager;
+import org.eclipse.jface.action.*;
 import org.eclipse.jface.bindings.keys.KeyStroke;
 import org.eclipse.jface.bindings.keys.ParseException;
 import org.eclipse.jface.commands.ActionHandler;
@@ -37,6 +34,7 @@ import org.eclipse.jface.preference.PreferenceDialog;
 import org.eclipse.jface.resource.ColorRegistry;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.resource.JFaceResources;
+import org.eclipse.jface.viewers.AbstractTreeViewer;
 import org.eclipse.jface.viewers.CellEditor;
 import org.eclipse.jface.viewers.ISelectionProvider;
 import org.eclipse.jface.window.IShellProvider;
@@ -531,6 +529,8 @@ public class UIUtils {
     public static Label createControlLabel(Composite parent, String label, int hSpan) {
         Label textLabel = new Label(parent, SWT.NONE);
         textLabel.setText(label + ": "); //$NON-NLS-1$
+        // Vert align center. Because height of single line control may differ from label height. This makes form ugly.
+        // For multiline texts we need to set vert align manually.
         GridData gd = new GridData(GridData.VERTICAL_ALIGN_CENTER /*| GridData.HORIZONTAL_ALIGN_END*/);
         gd.horizontalSpan = hSpan;
         textLabel.setLayoutData(gd);
@@ -586,7 +586,7 @@ public class UIUtils {
     public static Text createLabelText(@NotNull Composite parent, @NotNull String label, @Nullable String value, int style,
         @Nullable Object layoutData)
     {
-        createControlLabel(parent, label);
+        Label controlLabel = createControlLabel(parent, label);
 
         Text text = new Text(parent, style);
         fixReadonlyTextBackground(text);
@@ -695,6 +695,16 @@ public class UIUtils {
         return button;
     }
 
+    public static Button createCheckbox(Composite parent, boolean checked)
+    {
+        final Button button = new Button(parent, SWT.CHECK);
+        if (checked) {
+            button.setSelection(true);
+        }
+
+        return button;
+    }
+
     public static Combo createLabelCombo(Composite parent, String label, int style)
     {
         return createLabelCombo(parent, label, null, style);
@@ -721,6 +731,19 @@ public class UIUtils {
         Button button = new Button(parent, SWT.PUSH);
         button.setText(text);
         button.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+        if (selectionListener != null) {
+            button.addSelectionListener(selectionListener);
+        }
+        return button;
+    }
+
+    public static ToolItem createToolItem(ToolBar parent, String text, DBPImage icon, SelectionListener selectionListener)
+    {
+        ToolItem button = new ToolItem(parent, SWT.PUSH);
+        button.setToolTipText(text);
+        if (icon != null) {
+            button.setImage(DBeaverIcons.getImage(icon));
+        }
         if (selectionListener != null) {
             button.addSelectionListener(selectionListener);
         }
@@ -803,6 +826,19 @@ public class UIUtils {
         gl.marginHeight = 0;
         gl.marginWidth = 0;
         ph.setLayout(gl);
+        return ph;
+    }
+
+    public static Composite createFormPlaceholder(Composite parent, int columns, int hSpan)
+    {
+        Composite ph = new Composite(parent, SWT.NONE);
+        GridLayout gl = new GridLayout(columns, false);
+        gl.marginHeight = 0;
+        gl.marginWidth = 0;
+        ph.setLayout(gl);
+        GridData gd = new GridData(GridData.FILL_HORIZONTAL);
+        gd.horizontalSpan = hSpan;
+        ph.setLayoutData(gd);
         return ph;
     }
 
@@ -1395,13 +1431,17 @@ public class UIUtils {
     }
 
     public static void drawMessageOverControl(Control control, PaintEvent e, String message, int offset) {
+        drawMessageOverControl(control, e.gc, message, offset);
+    }
+
+    public static void drawMessageOverControl(Control control, GC gc, String message, int offset) {
         Rectangle bounds = control.getBounds();
         for (String line : message.split("\n")) {
             line = line.trim();
-            Point ext = e.gc.textExtent(line);
-            e.gc.drawText(line,
-                    (bounds.width - ext.x) / 2,
-                    bounds.height / 2 + offset);
+            Point ext = gc.textExtent(line);
+            gc.drawText(line,
+                (bounds.width - ext.x) / 2,
+                bounds.height / 2 + offset);
             offset += ext.y;
         }
     }
@@ -1409,6 +1449,22 @@ public class UIUtils {
     public static boolean launchProgram(String path)
     {
         return Program.launch(path);
+    }
+
+
+    public static void createTableContextMenu(@NotNull final Table table, @Nullable DBRCreator<Boolean, IContributionManager> menuCreator) {
+        MenuManager menuMgr = new MenuManager();
+        menuMgr.addMenuListener(manager -> {
+            if (menuCreator != null) {
+                if (!menuCreator.createObject(menuMgr)) {
+                    return;
+                }
+            }
+            UIUtils.fillDefaultTableContextMenu(manager, table);
+        });
+        menuMgr.setRemoveAllWhenShown(true);
+        table.setMenu(menuMgr.createContextMenu(table));
+        table.addDisposeListener(e -> menuMgr.dispose());
     }
 
     public static void fillDefaultTableContextMenu(IContributionManager menu, final Table table) {
@@ -1571,6 +1627,10 @@ public class UIUtils {
         }
     }
 
+    public static DBRRunnableContext getDialogRunnableContext() {
+        return (fork, cancelable, runnable) -> runInProgressDialog(runnable);
+    }
+
     /**
      * Runs task in Eclipse progress service.
      * NOTE: this call can't be canceled if it will block in IO
@@ -1716,6 +1776,18 @@ public class UIUtils {
         return shell;
     }
 
+    public static void centerShell(Shell parent, Shell shell) {
+        if (parent == null || shell == null) {
+            return;
+        }
+        Point size = shell.computeSize(SWT.DEFAULT, SWT.DEFAULT);
+        final Rectangle parentBounds = parent.getBounds();
+        final int x = parentBounds.x + (parentBounds.width - size.x) / 2;
+        final int y = parentBounds.y + (parentBounds.height - size.y) / 2;
+
+        shell.setLocation(x, y);
+    }
+
     public static Image getShardImage(String id) {
         return PlatformUI.getWorkbench().getSharedImages().getImage(id);
     }
@@ -1765,16 +1837,6 @@ public class UIUtils {
         Point preferred = item.computeSize(size.x, size.y);
         item.setPreferredSize(preferred);
         return item;
-    }
-
-    public static Point getParentSize(Control control) {
-        for (Composite composite = control.getParent(); composite != null; composite = composite.getParent()) {
-            Point size = composite.getSize();
-            if (size.x > 0 && size.y > 0) {
-                return size;
-            }
-        }
-        return new Point(0, 0);
     }
 
     public static void resizeShell(Shell shell) {
@@ -1916,5 +1978,16 @@ public class UIUtils {
         return control instanceof Text ?
             ((Text) control).getCharCount() == 0 :
             control instanceof StyledText && ((StyledText) control).getCharCount() == 0;
+    }
+
+    public static void expandAll(AbstractTreeViewer treeViewer) {
+        Control control = treeViewer.getControl();
+        control.setRedraw(false);
+        try {
+            // Do not use expandAll(true) as it is not supported by Eclipse versions before 2019
+            treeViewer.expandAll();
+        } finally {
+            control.setRedraw(true);
+        }
     }
 }

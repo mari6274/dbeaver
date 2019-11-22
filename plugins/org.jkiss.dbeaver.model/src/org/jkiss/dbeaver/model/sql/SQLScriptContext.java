@@ -21,11 +21,14 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.DBPContextProvider;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
+import org.jkiss.utils.CommonUtils;
 
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,6 +38,7 @@ public class SQLScriptContext {
 
     private final Map<String, Object> variables = new HashMap<>();
     private final Map<String, Object> pragmas = new HashMap<>();
+    private Map<String, Object> statementPragmas;
 
     private final Map<String, Object> data = new HashMap<>();
 
@@ -47,15 +51,21 @@ public class SQLScriptContext {
     @NotNull
     private final PrintWriter outputWriter;
 
+    private SQLParametersProvider parametersProvider;
+    private boolean ignoreParameters;
+
     public SQLScriptContext(
-            @Nullable SQLScriptContext parentContext,
-            @NotNull DBPContextProvider contextProvider,
-            @Nullable File sourceFile,
-            @NotNull Writer outputWriter) {
+        @Nullable SQLScriptContext parentContext,
+        @NotNull DBPContextProvider contextProvider,
+        @Nullable File sourceFile,
+        @NotNull Writer outputWriter,
+        @Nullable SQLParametersProvider parametersProvider)
+    {
         this.parentContext = parentContext;
         this.contextProvider = contextProvider;
         this.sourceFile = sourceFile;
         this.outputWriter = new PrintWriter(outputWriter);
+        this.parametersProvider = parametersProvider;
     }
 
     @NotNull
@@ -68,7 +78,6 @@ public class SQLScriptContext {
         return sourceFile;
     }
 
-    @NotNull
     public boolean hasVariable(String name) {
         if (variables.containsKey(name)) {
             return true;
@@ -76,7 +85,6 @@ public class SQLScriptContext {
         return parentContext != null && parentContext.hasVariable(name);
     }
 
-    @NotNull
     public Object getVariable(String name) {
         Object value = variables.get(name);
         if (value == null && parentContext != null) {
@@ -85,7 +93,6 @@ public class SQLScriptContext {
         return value;
     }
 
-    @NotNull
     public void setVariable(String name, Object value) {
         variables.put(name, value);
         if (parentContext != null) {
@@ -98,6 +105,17 @@ public class SQLScriptContext {
         return pragmas;
     }
 
+    public void setStatementPragma(String name, Object value) {
+        if (statementPragmas == null) {
+            statementPragmas = new LinkedHashMap<>();
+        }
+        statementPragmas.put(name, value);
+    }
+
+    public Object getStatementPragma(String name) {
+        return statementPragmas == null ? null : statementPragmas.get(name);
+    }
+
     public Object getData(String key) {
         return data.get(key);
     }
@@ -106,8 +124,21 @@ public class SQLScriptContext {
         this.data.put(key, value);
     }
 
+    @NotNull
     public PrintWriter getOutputWriter() {
         return outputWriter;
+    }
+
+    public void clearStatementContext() {
+        statementPragmas = null;
+    }
+
+    public boolean isIgnoreParameters() {
+        return ignoreParameters;
+    }
+
+    public void setIgnoreParameters(boolean ignoreParameters) {
+        this.ignoreParameters = ignoreParameters;
     }
 
     public void copyFrom(SQLScriptContext context) {
@@ -120,4 +151,30 @@ public class SQLScriptContext {
         this.pragmas.clear();
         this.pragmas.putAll(context.pragmas);
     }
+
+    public boolean fillQueryParameters(SQLQuery query) {
+        if (ignoreParameters || parametersProvider == null) {
+            return true;
+        }
+
+        // Bind parameters
+        List<SQLQueryParameter> parameters = query.getParameters();
+        if (CommonUtils.isEmpty(parameters)) {
+            return true;
+        }
+
+        // Resolve parameters (only if it is the first fetch)
+        Boolean paramsResult = parametersProvider.prepareStatementParameters(this, query, parameters);
+        if (paramsResult == null) {
+            ignoreParameters = true;
+            return true;
+        } else if (!paramsResult) {
+            return false;
+        }
+
+        SQLUtils.fillQueryParameters(query, parameters);
+
+        return true;
+    }
+
 }

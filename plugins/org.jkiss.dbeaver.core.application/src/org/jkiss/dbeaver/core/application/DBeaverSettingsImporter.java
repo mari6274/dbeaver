@@ -24,6 +24,7 @@ import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
+import org.eclipse.ui.internal.WorkbenchPlugin;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.runtime.BaseProgressMonitor;
@@ -34,6 +35,7 @@ import org.jkiss.utils.IOUtils;
 import org.jkiss.utils.StandardConstants;
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Properties;
 
 /**
@@ -103,6 +105,10 @@ class DBeaverSettingsImporter {
         Image dbeaverIcon = AbstractUIPlugin.imageDescriptorFromPlugin(DBeaverApplication.APPLICATION_PLUGIN_ID, "icons/dbeaver32.png").createImage();
         Image dbeaverLogo = AbstractUIPlugin.imageDescriptorFromPlugin(DBeaverApplication.APPLICATION_PLUGIN_ID, "icons/dbeaver64.png").createImage();
 
+        // Hide splash if any
+        WorkbenchPlugin.unsetSplashShell(display);
+
+        // Make new shell
         windowShell = new Shell(display);
         windowShell.setImage(dbeaverIcon);
         windowShell.setText("Import " + GeneralUtils.getProductName() + " configuration");
@@ -122,7 +128,7 @@ class DBeaverSettingsImporter {
             //confirmLabel.setImage(JFaceResources.getImage(org.eclipse.jface.dialogs.Dialog.DLG_IMG_MESSAGE_INFO));
             confirmLabel.setText(
                 "\n" +
-                GeneralUtils.getProductTitle() + " uses new configuration format.\n\n" +
+                GeneralUtils.getProductTitle() + " uses a new configuration format.\n\n" +
 //                "Previous version (" + GeneralUtils.getProductName() + " " + oldVersion + ") settings were found.\n" +
 //                oldDir.getAbsolutePath() + "\n" +
                 "Do you want to migrate existing settings (version " + oldVersion + ")?\n\n"

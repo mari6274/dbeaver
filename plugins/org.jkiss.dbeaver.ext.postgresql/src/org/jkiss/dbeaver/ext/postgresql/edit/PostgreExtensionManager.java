@@ -18,10 +18,6 @@
 
 package org.jkiss.dbeaver.ext.postgresql.edit;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreDatabase;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreExtension;
@@ -29,10 +25,13 @@ import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
+
+import java.util.List;
+import java.util.Map;
 
 public class PostgreExtensionManager extends SQLObjectEditor<PostgreExtension, PostgreDatabase>{
 
@@ -58,11 +57,11 @@ public class PostgreExtensionManager extends SQLObjectEditor<PostgreExtension, P
             SQLObjectEditor<PostgreExtension, PostgreDatabase>.ObjectCreateCommand command,
             Map<String, Object> options) {
         final PostgreExtension extension = command.getObject();
-        final StringBuilder script = new StringBuilder("CREATE EXTENSION " + DBUtils.getQuotedIdentifier(extension));
-        script.append(" SCHEMA ").append(extension.getSchema());
 
         actions.add(
-            new SQLDatabasePersistAction("Create extension", script.toString()) //$NON-NLS-2$
+            new SQLDatabasePersistAction(
+                "Create extension",
+                "CREATE EXTENSION " + DBUtils.getQuotedIdentifier(extension) + " SCHEMA " + extension.getSchema()) //$NON-NLS-2$
         );
     }
 
@@ -73,7 +72,7 @@ public class PostgreExtensionManager extends SQLObjectEditor<PostgreExtension, P
         
         
         actions.add(
-                new SQLDatabasePersistAction("Drop extension", "DROP EXTENSION " + command.getObject().getName() + " CASCADE") //$NON-NLS-2$
+                new SQLDatabasePersistAction("Drop extension", "DROP EXTENSION " + DBUtils.getQuotedIdentifier(command.getObject()) + " CASCADE") //$NON-NLS-2$
             );
     }
 

@@ -31,12 +31,14 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBFetchProgress;
 import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.connection.DBPConnectionType;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
 import org.jkiss.dbeaver.model.data.DBDDataReceiver;
+import org.jkiss.dbeaver.model.data.DBDDataReceiverInteractive;
 import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.impl.AbstractExecutionSource;
 import org.jkiss.dbeaver.model.impl.local.StatResultSet;
@@ -53,14 +55,12 @@ import org.jkiss.dbeaver.runtime.sql.SQLResultsConsumer;
 import org.jkiss.dbeaver.runtime.sql.SQLScriptCommitType;
 import org.jkiss.dbeaver.runtime.sql.SQLScriptErrorHandling;
 import org.jkiss.dbeaver.runtime.ui.DBPPlatformUI;
-import org.jkiss.dbeaver.ui.UIConfirmation;
 import org.jkiss.dbeaver.ui.UITask;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.resultset.ResultSetPreferences;
 import org.jkiss.dbeaver.ui.dialogs.ConfirmationDialog;
 import org.jkiss.dbeaver.ui.dialogs.exec.ExecutionQueueErrorJob;
 import org.jkiss.dbeaver.ui.editors.sql.SQLPreferenceConstants;
-import org.jkiss.dbeaver.ui.editors.sql.dialogs.SQLQueryParameterBindDialog;
 import org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorActivator;
 import org.jkiss.dbeaver.ui.editors.sql.registry.SQLCommandHandlerDescriptor;
 import org.jkiss.dbeaver.ui.editors.sql.registry.SQLCommandsRegistry;
@@ -110,7 +110,6 @@ public class SQLQueryJob extends DataSourceJob
 
     private boolean skipConfirmation;
     private int fetchSize;
-    private long readFlags;
 
     public SQLQueryJob(
         @NotNull IWorkbenchPartSite partSite,
@@ -170,10 +169,6 @@ public class SQLQueryJob extends DataSourceJob
 
     public void setFetchSize(int fetchSize) {
         this.fetchSize = fetchSize;
-    }
-
-    public void setReadFlags(long readFlags) {
-        this.readFlags = readFlags;
     }
 
     @Override
@@ -353,12 +348,24 @@ public class SQLQueryJob extends DataSourceJob
         final DBPDataSource dataSource = executionContext.getDataSource();
 
         final SQLQuery originalQuery = sqlQuery;
+
+        DBDDataReceiver dataReceiver = resultsConsumer.getDataReceiver(sqlQuery, resultSetNumber);
+        try {
+            if (dataReceiver instanceof DBDDataReceiverInteractive) {
+                ((DBDDataReceiverInteractive) dataReceiver).setDataReceivePaused(true);
+            }
+            if (!scriptContext.fillQueryParameters((SQLQuery) element)) {
+                // User canceled
+                return false;
+            }
+        } finally {
+            if (dataReceiver instanceof DBDDataReceiverInteractive) {
+                ((DBDDataReceiverInteractive) dataReceiver).setDataReceivePaused(false);
+            }
+        }
+
         long startTime = System.currentTimeMillis();
         boolean startQueryAlerted = false;
-
-        if (!prepareStatementParameters(sqlQuery)) {
-            return false;
-        }
 
         // Modify query (filters + parameters)
         String queryText = originalQuery.getText();//.trim();
@@ -401,9 +408,14 @@ public class SQLQueryJob extends DataSourceJob
             startTime = System.currentTimeMillis();
 
             SQLQuery execStatement = sqlQuery;
-            long execStartTime = startTime;
             DBExecUtils.tryExecuteRecover(session, session.getDataSource(), param -> {
                 try {
+                    // We can't reset statistics here (we can be in script mode)
+                    //statistics.setStatementsCount(0);
+                    //statistics.setExecuteTime(0);
+                    //statistics.setFetchTime(0);
+                    //statistics.setRowsUpdated(0);
+                    long execStartTime = System.currentTimeMillis();
                     executeStatement(session, execStatement, execStartTime, curResult);
                 } catch (Throwable e) {
                     throw new InvocationTargetException(e);
@@ -428,6 +440,8 @@ public class SQLQueryJob extends DataSourceJob
                     log.error(e);
                 }
             }
+
+            scriptContext.clearStatementContext();
         }
 
         if (curResult.getError() != null && errorHandling != SQLScriptErrorHandling.IGNORE) {
@@ -447,9 +461,7 @@ public class SQLQueryJob extends DataSourceJob
             sqlQuery,
             rsOffset,
             rsMaxRows);
-        if (fetchSize > 0) {
-            dbcStatement.setResultsFetchSize(fetchSize);
-        }
+        DBExecUtils.setStatementFetchSize(dbcStatement, rsOffset, rsMaxRows, fetchSize);
         curStatement = dbcStatement;
 
         int statementTimeout = getDataSourceContainer().getPreferenceStore().getInt(SQLPreferenceConstants.STATEMENT_TIMEOUT);
@@ -464,13 +476,16 @@ public class SQLQueryJob extends DataSourceJob
         // Execute statement
         try {
             session.getProgressMonitor().subTask("Execute query");
+
             boolean hasResultSet = dbcStatement.executeStatement();
-            curResult.setHasResultSet(hasResultSet);
+
             statistics.addExecuteTime(System.currentTimeMillis() - startTime);
             statistics.addStatementsCount();
 
+            curResult.setHasResultSet(hasResultSet);
+
             long updateCount = -1;
-            while (hasResultSet || resultSetNumber == 0 || updateCount >= 0) {
+            while (true) {
                 // Fetch data only if we have to fetch all results or if it is rs requested
                 if (fetchResultSetNumber < 0 || fetchResultSetNumber == resultSetNumber) {
                     if (hasResultSet && fetchResultSets) {
@@ -526,7 +541,7 @@ public class SQLQueryJob extends DataSourceJob
                 } else {
                     break;
                 }
-            }
+            };
         }
         finally {
             try {
@@ -609,80 +624,6 @@ public class SQLQueryJob extends DataSourceJob
         fetchQueryData(session, fakeResultSet, resultInfo, executeResult, dataReceiver, false);
     }
 
-    public boolean prepareStatementParameters(SQLQuery sqlStatement) {
-        // Bind parameters
-        List<SQLQueryParameter> parameters = sqlStatement.getParameters();
-        if (CommonUtils.isEmpty(parameters)) {
-            return true;
-        }
-
-        if ((readFlags & DBSDataContainer.FLAG_FETCH_SEGMENT) == 0) {
-            // Resolve parameters (only if it is the first fetch)
-            if (!fillStatementParameters(parameters)) {
-                return false;
-            }
-        }
-
-        // Set values for all parameters
-        // Replace parameter tokens with parameter values
-        String query = sqlStatement.getText();
-        for (int i = parameters.size(); i > 0; i--) {
-            SQLQueryParameter parameter = parameters.get(i - 1);
-            String paramValue = parameter.getValue();
-            if (paramValue == null || paramValue.isEmpty()) {
-                paramValue = SQLConstants.NULL_VALUE;
-            }
-            query = query.substring(0, parameter.getTokenOffset()) + paramValue + query.substring(parameter.getTokenOffset() + parameter.getTokenLength());
-        }
-        sqlStatement.setText(query);
-        return true;
-    }
-
-    private boolean fillStatementParameters(final List<SQLQueryParameter> parameters)
-    {
-        for (SQLQueryParameter param : parameters) {
-            String paramName = param.getVarName();
-            if (scriptContext.hasVariable(paramName)) {
-                Object varValue = scriptContext.getVariable(paramName);
-                String strValue = varValue == null ? null : varValue.toString();
-                param.setValue(strValue);
-                param.setVariableSet(true);
-            } else {
-                param.setVariableSet(false);
-            }
-        }
-        boolean allSet = true;
-        for (SQLQueryParameter param : parameters) {
-            if (!param.isVariableSet()) {
-                allSet = false;
-            }
-        }
-        if (allSet) {
-            return true;
-        }
-
-        boolean okPressed = new UIConfirmation() {
-                @Override
-                public Boolean runTask() {
-                SQLQueryParameterBindDialog dialog = new SQLQueryParameterBindDialog(
-                    partSite.getShell(),
-                    parameters);
-                return (dialog.open() == IDialogConstants.OK_ID);
-            }
-        }.execute();
-
-        if (okPressed) {
-            // Save values back to script context
-            for (SQLQueryParameter param : parameters) {
-                if (param.isNamed() && scriptContext.hasVariable(param.getVarName())) {
-                    String strValue = param.getValue();
-                    scriptContext.setVariable(param.getVarName(), strValue);
-                }
-            }
-        }
-        return okPressed;
-    }
-
     private boolean fetchQueryData(DBCSession session, DBCResultSet resultSet, SQLQueryResult result, SQLQueryResult.ExecuteResult executeResult, DBDDataReceiver dataReceiver, boolean updateStatistics)
         throws DBCException
     {
@@ -700,7 +641,7 @@ public class SQLQueryJob extends DataSourceJob
         }
         DBRProgressMonitor monitor = session.getProgressMonitor();
         monitor.subTask("Fetch result set");
-        long rowCount = 0;
+        DBFetchProgress fetchProgress = new DBFetchProgress(session.getProgressMonitor());
 
         dataReceiver.fetchStart(session, resultSet, rsOffset, rsMaxRows);
 
@@ -741,18 +682,9 @@ public class SQLQueryJob extends DataSourceJob
             long fetchStartTime = System.currentTimeMillis();
 
             // Fetch all rows
-            while ((!hasLimits() || rowCount < rsMaxRows) && resultSet.nextRow()) {
-                if (monitor.isCanceled()) {
-                    break;
-                }
-                rowCount++;
-
-                if (rowCount > 0 && rowCount % 100 == 0) {
-                    monitor.subTask(rowCount + " rows fetched");
-                    monitor.worked(100);
-                }
-
+            while ((!hasLimits() || !fetchProgress.isMaxRowsFetched(rsMaxRows)) && !fetchProgress.isCanceled() && resultSet.nextRow()) {
                 dataReceiver.fetchRow(session, resultSet);
+                fetchProgress.monitorRowFetch();
             }
             if (updateStatistics) {
                 statistics.addFetchTime(System.currentTimeMillis() - fetchStartTime);
@@ -775,12 +707,12 @@ public class SQLQueryJob extends DataSourceJob
         }
 
         if (result != null) {
-            executeResult.setRowCount(rowCount);
+            executeResult.setRowCount(fetchProgress.getRowCount());
         }
         if (updateStatistics) {
-            statistics.setRowsFetched(rowCount);
+            statistics.setRowsFetched(fetchProgress.getRowCount());
         }
-        monitor.subTask(rowCount + " rows fetched");
+        monitor.subTask(fetchProgress.getRowCount() + " rows fetched");
 
         return true;
     }
@@ -938,7 +870,4 @@ public class SQLQueryJob extends DataSourceJob
         }.execute();
     }
 
-    public boolean transformQueryWithParameters(SQLQuery query) {
-        return prepareStatementParameters(query);
-    }
 }

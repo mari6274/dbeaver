@@ -171,6 +171,7 @@ public class UIIcon {
     public static final DBIcon LINK = new DBIcon("link", "misc/link.png"); //$NON-NLS-1$ //$NON-NLS-2$
     public static final DBIcon LINK2 = new DBIcon("link2", "misc/link2.png"); //$NON-NLS-1$ //$NON-NLS-2$
     public static final DBIcon CURSOR = new DBIcon("cursor", "misc/cursor.png"); //$NON-NLS-1$ //$NON-NLS-2$
+    public static final DBIcon SECURITY = new DBIcon("security", "security.png"); //$NON-NLS-1$ //$NON-NLS-2$
 
     public static final DBIcon GEN_DATABASE = new DBIcon("gen_database", "database.png"); //$NON-NLS-1$ //$NON-NLS-2$
     public static final DBIcon GEN_DATABASE_TYPE = new DBIcon("gen_database_type", "database_type.png"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -210,9 +211,8 @@ public class UIIcon {
     public static final DBIcon ACTION_USER_ADD = new DBIcon("action_user_add", "actions/user_add.png"); //$NON-NLS-1$ //$NON-NLS-2$
     public static final DBIcon ACTION_USER_DELETE = new DBIcon("action_user_delete", "actions/user_delete.png"); //$NON-NLS-1$ //$NON-NLS-2$
 
-    public static final DBIcon ACTION_OBJECT = new DBIcon("action_object", "actions/object.png"); //$NON-NLS-1$ //$NON-NLS-2$
-    public static final DBIcon ACTION_OBJECT_ADD = new DBIcon("action_object_add", "actions/object_add.png"); //$NON-NLS-1$ //$NON-NLS-2$
-    public static final DBIcon ACTION_OBJECT_DELETE = new DBIcon("action_object_delete", "actions/object_delete.png"); //$NON-NLS-1$ //$NON-NLS-2$
+    public static final DBIcon ACTION_OBJECT_ADD = new DBIcon("action_object_add", "misc/object_add.png"); //$NON-NLS-1$ //$NON-NLS-2$
+    public static final DBIcon ACTION_OBJECT_DELETE = new DBIcon("action_object_delete", "misc/object_remove.png"); //$NON-NLS-1$ //$NON-NLS-2$
 
     public static final DBIcon DRIVER_MANAGER = new DBIcon("driver_manager.png"); //$NON-NLS-1$
 
@@ -227,6 +227,8 @@ public class UIIcon {
     public static final DBIcon SHOW_ALL_DETAILS = new DBIcon("misc/show_all_details.png"); //$NON-NLS-1$
     public static final DBIcon SHOW_MAIN_DETAILS = new DBIcon("misc/show_main_details.png "); //$NON-NLS-1$
     public static final DBIcon HIDE_ALL_DETAILS = new DBIcon("misc/hide_all_details.png"); //$NON-NLS-1$
+
+    public static final DBIcon RUN = new DBIcon("run.png"); //$NON-NLS-1$
 
     static  {
         DBIcon.loadIcons(UIIcon.class);

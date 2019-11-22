@@ -27,8 +27,22 @@ public interface DBPApplication
 {
     boolean isStandalone();
 
+    /**
+     * Primary instance if the first instance of application which locked the workspace.
+     * Other instances can be run over the same workspace but they can't lock it.
+     */
+    boolean isPrimaryInstance();
+
+    /**
+     * Headless mode - console interface or server-side mode
+     */
+    boolean isHeadlessMode();
+
     @NotNull
     DBASecureStorage getSecureStorage();
+
+    @NotNull
+    DBASecureStorage getProjectSecureStorage(DBPProject project);
 
     /**
      * Application information details.

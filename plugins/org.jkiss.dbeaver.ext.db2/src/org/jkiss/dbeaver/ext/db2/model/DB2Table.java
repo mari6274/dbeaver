@@ -17,11 +17,6 @@
  */
 package org.jkiss.dbeaver.ext.db2.model;
 
-import java.sql.ResultSet;
-import java.sql.Timestamp;
-import java.util.Collection;
-import java.util.Map;
-
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -30,22 +25,12 @@ import org.jkiss.dbeaver.ext.db2.DB2Utils;
 import org.jkiss.dbeaver.ext.db2.editors.DB2SourceObject;
 import org.jkiss.dbeaver.ext.db2.editors.DB2TableTablespaceListProvider;
 import org.jkiss.dbeaver.ext.db2.model.cache.DB2TableTriggerCache;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableAccessMode;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableCompressionMode;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableDropRule;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableLockSize;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TablePartitionMode;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableStatus;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableTemporalType;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2TableType;
-import org.jkiss.dbeaver.ext.db2.model.dict.DB2YesNo;
-import org.jkiss.dbeaver.model.DBPNamedObject2;
+import org.jkiss.dbeaver.ext.db2.model.dict.*;
 import org.jkiss.dbeaver.model.DBPRefreshableObject;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttributeContainer;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.impl.DBObjectNameCaseTransformer;
-import org.jkiss.dbeaver.model.impl.DBSObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectSimpleCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCStructCache;
@@ -54,9 +39,15 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectState;
+import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKey;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
+
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * DB2 Table
@@ -64,7 +55,7 @@ import org.jkiss.utils.CommonUtils;
  * @author Denis Forveille
  */
 public class DB2Table extends DB2TableBase
-    implements DBPNamedObject2, DBPRefreshableObject, DB2SourceObject, DBDPseudoAttributeContainer {
+    implements DBPRefreshableObject, DB2SourceObject, DBDPseudoAttributeContainer {
 
     private static final String LINE_SEPARATOR = GeneralUtils.getDefaultLineSeparator();
 
@@ -381,25 +372,25 @@ public class DB2Table extends DB2TableBase
         return append;
     }
 
-    @Property(viewable = false, editable = false, order = 101)
+    @Property(viewable = false, editable = false, specific = true, order = 101)
     public String getVolatileMode()
     {
         return volatileMode;
     }
 
-    @Property(viewable = false, editable = false, order = 104)
+    @Property(viewable = false, editable = false, specific = true, order = 104)
     public DB2TableLockSize getLockSize()
     {
         return lockSize;
     }
 
-    @Property(viewable = false, editable = false, order = 105)
+    @Property(viewable = false, editable = false, specific = true, order = 105)
     public DB2TableCompressionMode getCompression()
     {
         return compression;
     }
 
-    @Property(viewable = false, editable = false, order = 106)
+    @Property(viewable = false, editable = false, specific = true, order = 106)
     public DB2TableAccessMode getAccessMode()
     {
         return accessMode;
@@ -417,13 +408,13 @@ public class DB2Table extends DB2TableBase
         return dropRule;
     }
 
-    @Property(viewable = false, editable = false, order = 109)
+    @Property(viewable = false, editable = false, specific = true, order = 109)
     public String getDataCapture()
     {
         return dataCapture;
     }
 
-    @Property(viewable = false, editable = false, order = 110)
+    @Property(viewable = false, editable = false, specific = true, order = 110)
     public DB2TablePartitionMode getPartitionMode()
     {
         return partitionMode;
