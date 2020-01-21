@@ -27,7 +27,9 @@ import org.jkiss.dbeaver.tools.transfer.DataTransferJob;
 import org.jkiss.dbeaver.tools.transfer.DataTransferPipe;
 import org.jkiss.dbeaver.tools.transfer.DataTransferSettings;
 
+import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
@@ -42,13 +44,14 @@ public class DTTaskHandlerTransfer implements DBTTaskHandler {
         @NotNull DBTTask task,
         @NotNull Locale locale,
         @NotNull Log log,
+        @NotNull Writer logStream,
         @NotNull DBTTaskExecutionListener listener) throws DBException
     {
-        DataTransferSettings settings = new DataTransferSettings(runnableContext, task);
-        executeWithSettings(runnableContext, locale, log, listener, settings);
+        DataTransferSettings settings = new DataTransferSettings(runnableContext, task, log, Collections.emptyMap());
+        executeWithSettings(runnableContext, task, locale, log, listener, settings);
     }
 
-    public void executeWithSettings(@NotNull DBRRunnableContext runnableContext, @NotNull Locale locale, @NotNull Log log, @NotNull DBTTaskExecutionListener listener, DataTransferSettings settings) throws DBException {
+    public void executeWithSettings(@NotNull DBRRunnableContext runnableContext, DBTTask task, @NotNull Locale locale, @NotNull Log log, @NotNull DBTTaskExecutionListener listener, DataTransferSettings settings) throws DBException {
         // Start consumers
         listener.taskStarted(settings);
 
@@ -85,7 +88,7 @@ public class DTTaskHandlerTransfer implements DBTTaskHandler {
         }
         Throwable error = null;
         for (int i = 0; i < totalJobs; i++) {
-            DataTransferJob job = new DataTransferJob(settings, locale, log, listener);
+            DataTransferJob job = new DataTransferJob(settings, task, locale, log, listener);
             try {
                 runnableContext.run(true, true, job);
             } catch (InvocationTargetException e) {

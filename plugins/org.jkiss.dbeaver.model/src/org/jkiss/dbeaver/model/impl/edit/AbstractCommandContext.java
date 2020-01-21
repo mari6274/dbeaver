@@ -90,7 +90,7 @@ public abstract class AbstractCommandContext implements DBECommandContext {
             Map<String, Object> validateOptions = new HashMap<>();
             for (CommandQueue queue : getCommandQueues()) {
                 for (CommandInfo cmd : queue.commands) {
-                    cmd.command.validateCommand(validateOptions);
+                    cmd.command.validateCommand(monitor, validateOptions);
                 }
             }
             useAutoCommit = CommonUtils.getOption(validateOptions, OPTION_AVOID_TRANSACTIONS);
@@ -161,7 +161,7 @@ public abstract class AbstractCommandContext implements DBECommandContext {
                     if (!cmd.executed) {
                         // Persist changes
                         //if (CommonUtils.isEmpty(cmd.persistActions)) {
-                            DBEPersistAction[] persistActions = cmd.command.getPersistActions(monitor, options);
+                            DBEPersistAction[] persistActions = cmd.command.getPersistActions(monitor, executionContext, options);
                             if (!ArrayUtils.isEmpty(persistActions)) {
                                 cmd.persistActions = new ArrayList<>(persistActions.length);
                                 for (DBEPersistAction action : persistActions) {

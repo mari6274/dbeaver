@@ -34,7 +34,6 @@
 package org.jkiss.dbeaver.ui.controls.resultset.spreadsheet;
 
 import org.eclipse.core.runtime.IAdaptable;
-import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.jface.action.Action;
@@ -61,7 +60,6 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.menus.CommandContributionItem;
-import org.eclipse.ui.progress.UIJob;
 import org.eclipse.ui.themes.ITheme;
 import org.eclipse.ui.views.properties.IPropertySheetPage;
 import org.jkiss.code.NotNull;
@@ -81,6 +79,7 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.properties.PropertyCollector;
 import org.jkiss.dbeaver.ui.ActionUtils;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
+import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.PropertyPageStandard;
 import org.jkiss.dbeaver.ui.controls.lightgrid.*;
@@ -110,6 +109,8 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
 
     private static final Log log = Log.getLog(SpreadsheetPresentation.class);
 
+    private static final boolean SHOW_BOOLEAN_AS_CHECK = false;
+
     private Spreadsheet spreadsheet;
 
     @Nullable
@@ -130,7 +131,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
     private Color backgroundReadOnly;
     private Color foregroundDefault;
     private Color foregroundNull;
-    private final Map<DBPDataKind, Color> dataTypesForegrounds = new HashMap<>();
+    private final Map<DBPDataKind, Color> dataTypesForegrounds = new IdentityHashMap<>();
     private Color foregroundSelected, backgroundSelected;
     private Color backgroundMatched;
     private Color cellHeaderForeground, cellHeaderBackground, cellHeaderSelectionBackground;
@@ -1002,16 +1003,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
             if (editorControl != null) {
                 editorControl.addDisposeListener(e -> valueController.unregisterEditor((IValueEditorStandalone) activeInlineEditor));
             }
-            // show dialog in separate job to avoid block
-            new UIJob("Open separate editor") {
-                @Override
-                public IStatus runInUIThread(IProgressMonitor monitor)
-                {
-                    ((IValueEditorStandalone) activeInlineEditor).showValueEditor();
-                    return Status.OK_STATUS;
-                }
-            }.schedule();
-            //((IValueEditorStandalone)editor).showValueEditor();
+            UIUtils.asyncExec(() -> ((IValueEditorStandalone) activeInlineEditor).showValueEditor());
         } else {
             // Set editable value
             if (activeInlineEditor != null) {
@@ -1641,6 +1633,9 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         public Object getCellValue(Object colElement, Object rowElement, boolean formatString)
         {
             DBDAttributeBinding attr = (DBDAttributeBinding)(rowElement instanceof DBDAttributeBinding ? rowElement : colElement);
+            if (SHOW_BOOLEAN_AS_CHECK && attr.getDataKind() == DBPDataKind.BOOLEAN) {
+                return "";
+            }
             ResultSetRow row = (ResultSetRow)(colElement instanceof ResultSetRow ? colElement : rowElement);
             int rowNum = row.getVisualNumber();
             Object value = controller.getModel().getCellValue(attr, row);
@@ -1678,6 +1673,14 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         @Override
         public DBPImage getCellImage(Object colElement, Object rowElement)
         {
+            DBDAttributeBinding attr = (DBDAttributeBinding)(rowElement instanceof DBDAttributeBinding ? rowElement : colElement);
+            if (SHOW_BOOLEAN_AS_CHECK && attr.getDataKind() == DBPDataKind.BOOLEAN) {
+                ResultSetRow row = (ResultSetRow)(colElement instanceof ResultSetRow ? colElement : rowElement);
+                Object cellValue = controller.getModel().getCellValue(attr, row);
+                if (cellValue instanceof Boolean) {
+                    return (Boolean)cellValue ? UIIcon.CHECK_ON : UIIcon.CHECK_OFF;
+                }
+            }
             // TODO: tired from cell icons. But maybe they make some sense - let's keep them commented
 /*
             if (!showCelIcons) {

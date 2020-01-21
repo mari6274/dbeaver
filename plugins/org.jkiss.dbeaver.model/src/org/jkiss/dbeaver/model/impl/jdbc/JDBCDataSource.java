@@ -41,7 +41,6 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableWithProgress;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
-import org.jkiss.dbeaver.model.sql.SQLDataSource;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLState;
 import org.jkiss.dbeaver.model.struct.DBSDataType;
@@ -65,7 +64,6 @@ import java.util.Properties;
 public abstract class JDBCDataSource
     implements
         DBPDataSource,
-        SQLDataSource,
         DBPDataTypeProvider,
         DBPErrorAssistant,
         DBPRefreshableObject,
@@ -108,7 +106,7 @@ public abstract class JDBCDataSource
     }
 
     protected void initializeRemoteInstance(@NotNull DBRProgressMonitor monitor) throws DBException {
-        this.defaultRemoteInstance = new JDBCRemoteInstance<>(monitor, this, true);
+        this.defaultRemoteInstance = new JDBCRemoteInstance(monitor, this, true);
     }
 
     protected Connection openConnection(@NotNull DBRProgressMonitor monitor, @Nullable JDBCExecutionContext context, @NotNull String purpose)
@@ -127,8 +125,13 @@ public abstract class JDBCDataSource
         DBPConnectionConfiguration connectionInfo = container.getActualConnectionConfiguration();
         Properties connectProps = getAllConnectionProperties(monitor, context, purpose, connectionInfo);
 
+        final JDBCConnectionConfigurer connectionConfigurer = GeneralUtils.adapt(this, JDBCConnectionConfigurer.class);
+
         // Obtain connection
         try {
+            if (connectionConfigurer != null) {
+                connectionConfigurer.beforeConnection(connectionInfo, connectProps);
+            }
             final String url = getConnectionURL(connectionInfo);
             if (driverInstance != null) {
                 try {
@@ -155,6 +158,14 @@ public abstract class JDBCDataSource
                     }
                 } catch (Exception e) {
                     error[0] = e;
+                } finally {
+                    if (connectionConfigurer != null) {
+                        try {
+                            connectionConfigurer.afterConnection(connectionInfo, connectProps, connection[0], error[0]);
+                        } catch (Exception e) {
+                            log.debug(e);
+                        }
+                    }
                 }
             };
             boolean openTaskFinished;
@@ -281,7 +292,7 @@ public abstract class JDBCDataSource
     }
 */
 
-    protected void initializeContextState(@NotNull DBRProgressMonitor monitor, @NotNull JDBCExecutionContext context, boolean setActiveObject) throws DBCException {
+    protected void initializeContextState(@NotNull DBRProgressMonitor monitor, @NotNull JDBCExecutionContext context, JDBCExecutionContext initFrom) throws DBException {
 
     }
 
@@ -445,6 +456,10 @@ public abstract class JDBCDataSource
     public DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException {
         this.dataSourceInfo = new JDBCDataSourceInfo(container);
         return this;
+    }
+
+    protected JDBCExecutionContext createExecutionContext(JDBCRemoteInstance instance, String type) {
+        return new JDBCExecutionContext(instance, type);
     }
 
     @Nullable
@@ -684,6 +699,8 @@ public abstract class JDBCDataSource
     public <T> T getAdapter(Class<T> adapter) {
         if (adapter == DBCTransactionManager.class) {
             return adapter.cast(DBUtils.getDefaultContext(getDefaultInstance(), false));
+        } else if (adapter == DBCQueryTransformProvider.class) {
+            return adapter.cast(this);
         }
         return null;
     }
@@ -715,4 +732,5 @@ public abstract class JDBCDataSource
             throw new DBException(e, this);
         }
     }
+
 }

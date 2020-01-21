@@ -97,14 +97,6 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
     {
         Number value;
         switch (type.getTypeID()) {
-            case Types.DOUBLE:
-            case Types.REAL:
-            case Types.FLOAT:
-                // Always read as double to avoid precision loose (#7214)
-                value = resultSet.getDouble(index);
-                break;
-                //value = resultSet.getFloat(index);
-                //break;
             case Types.INTEGER:
                 try {
                     // Read value with maximum precision. Some drivers reports INTEGER but means long [JDBC:SQLite]
@@ -146,8 +138,16 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
                     }
                 }
                 break;
+            case Types.DOUBLE:
+            case Types.REAL:
+            case Types.FLOAT:
+                if (isReadDecimalsAsDouble()) {
+                    // Always read as double to avoid precision loose (#7214)
+                    value = resultSet.getDouble(index);
+                    break;
+                }
             default:
-                // Here may be any numeric value. BigDecimal or BigInteger for example
+                // Here may be any numeric value. float, double, BigDecimal or BigInteger for example
                 boolean gotValue = false;
                 value = null;
                 try {
@@ -184,6 +184,10 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
         } else {
             return value;
         }
+    }
+
+    protected boolean isReadDecimalsAsDouble() {
+        return false;
     }
 
     @Override
@@ -309,7 +313,12 @@ public class JDBCNumberValueHandler extends JDBCAbstractValueHandler implements 
         } else if (object instanceof Number) {
             return object;
         } else if (object instanceof String) {
-            return DBValueFormatting.convertStringToNumber((String) object, getNumberType(type), formatter);
+            String strValue = (String) object;
+            if (strValue.isEmpty()) {
+                // Empty string means NULL value
+                return null;
+            }
+            return DBValueFormatting.convertStringToNumber(strValue, getNumberType(type), formatter);
         } else if (object instanceof Boolean) {
             return (Boolean) object ? 1 : 0;
         } else {

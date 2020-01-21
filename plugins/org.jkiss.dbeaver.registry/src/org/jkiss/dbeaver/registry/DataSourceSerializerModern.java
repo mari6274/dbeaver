@@ -517,17 +517,24 @@ class DataSourceSerializerModern implements DataSourceSerializer
 
                     // Bootstrap
                     Map<String, Object> bootstrapCfg = JSONUtils.getObject(cfgObject, RegistryConstants.TAG_BOOTSTRAP);
+                    DBPConnectionBootstrap bootstrap = config.getBootstrap();
                     if (bootstrapCfg.containsKey(RegistryConstants.ATTR_AUTOCOMMIT)) {
-                        config.getBootstrap().setDefaultAutoCommit(JSONUtils.getBoolean(bootstrapCfg, RegistryConstants.ATTR_AUTOCOMMIT));
+                        bootstrap.setDefaultAutoCommit(JSONUtils.getBoolean(bootstrapCfg, RegistryConstants.ATTR_AUTOCOMMIT));
                     }
                     if (bootstrapCfg.containsKey(RegistryConstants.ATTR_TXN_ISOLATION)) {
-                        config.getBootstrap().setDefaultTransactionIsolation(JSONUtils.getInteger(bootstrapCfg, RegistryConstants.ATTR_TXN_ISOLATION));
+                        bootstrap.setDefaultTransactionIsolation(JSONUtils.getInteger(bootstrapCfg, RegistryConstants.ATTR_TXN_ISOLATION));
                     }
-                    config.getBootstrap().setDefaultObjectName(JSONUtils.getString(bootstrapCfg, RegistryConstants.ATTR_DEFAULT_OBJECT));
+                    bootstrap.setDefaultCatalogName(JSONUtils.getString(bootstrapCfg, RegistryConstants.ATTR_DEFAULT_CATALOG));
+                    bootstrap.setDefaultSchemaName(JSONUtils.getString(bootstrapCfg, RegistryConstants.ATTR_DEFAULT_SCHEMA));
+                    String defObjectName = JSONUtils.getString(bootstrapCfg, RegistryConstants.ATTR_DEFAULT_OBJECT);
+                    if (!CommonUtils.isEmpty(defObjectName) && CommonUtils.isEmpty(bootstrap.getDefaultSchemaName())) {
+                        bootstrap.setDefaultSchemaName(JSONUtils.getString(bootstrapCfg, defObjectName));
+                    }
+
                     if (bootstrapCfg.containsKey(RegistryConstants.ATTR_IGNORE_ERRORS)) {
-                        config.getBootstrap().setIgnoreErrors(JSONUtils.getBoolean(bootstrapCfg, RegistryConstants.ATTR_IGNORE_ERRORS));
+                        bootstrap.setIgnoreErrors(JSONUtils.getBoolean(bootstrapCfg, RegistryConstants.ATTR_IGNORE_ERRORS));
                     }
-                    config.getBootstrap().setInitQueries(JSONUtils.deserializeStringList(bootstrapCfg, RegistryConstants.TAG_QUERY));
+                    bootstrap.setInitQueries(JSONUtils.deserializeStringList(bootstrapCfg, RegistryConstants.TAG_QUERY));
                 }
 
                 // Permissions
@@ -612,11 +619,12 @@ class DataSourceSerializerModern implements DataSourceSerializer
             log.warn("Can't find network handler '" + handlerId + "'");
             return null;
         } else {
-            DBWHandlerConfiguration curNetworkHandler = new DBWHandlerConfiguration(handlerDescriptor, dataSource == null ? null : dataSource.getDriver());
+            DBWHandlerConfiguration curNetworkHandler = new DBWHandlerConfiguration(handlerDescriptor, dataSource);
             curNetworkHandler.setEnabled(JSONUtils.getBoolean(handlerCfg, RegistryConstants.ATTR_ENABLED));
             curNetworkHandler.setSavePassword(JSONUtils.getBoolean(handlerCfg, RegistryConstants.ATTR_SAVE_PASSWORD));
             if (!passwordReadCanceled) {
-                final String[] creds = readSecuredCredentials(handlerCfg, dataSource, profile, "network/" + handlerId);
+                final String[] creds = readSecuredCredentials(handlerCfg, dataSource, profile,
+                    "network/" + handlerId + (profile == null ? "" : "/profile/" + profile.getProfileName()));
                 curNetworkHandler.setUserName(creds[0]);
                 if (curNetworkHandler.isSavePassword()) {
                     curNetworkHandler.setPassword(creds[1]);
@@ -774,7 +782,8 @@ class DataSourceSerializerModern implements DataSourceSerializer
                     if (bootstrap.getDefaultTransactionIsolation() != null) {
                         JSONUtils.field(json, RegistryConstants.ATTR_TXN_ISOLATION, bootstrap.getDefaultTransactionIsolation());
                     }
-                    JSONUtils.fieldNE(json, RegistryConstants.ATTR_DEFAULT_OBJECT, bootstrap.getDefaultObjectName());
+                    JSONUtils.fieldNE(json, RegistryConstants.ATTR_DEFAULT_CATALOG, bootstrap.getDefaultCatalogName());
+                    JSONUtils.fieldNE(json, RegistryConstants.ATTR_DEFAULT_SCHEMA, bootstrap.getDefaultSchemaName());
                     if (bootstrap.isIgnoreErrors()) {
                         JSONUtils.field(json, RegistryConstants.ATTR_IGNORE_ERRORS, true);
                     }
@@ -857,7 +866,7 @@ class DataSourceSerializerModern implements DataSourceSerializer
             saveSecuredCredentials(
                 dataSource,
                 profile,
-                "network/" + configuration.getId(),
+                "network/" + configuration.getId() + (profile == null ? "" : "/profile/" + profile.getProfileName()),
                 configuration.getUserName(),
                 configuration.isSavePassword() ? configuration.getPassword() : null);
         }
@@ -880,12 +889,12 @@ class DataSourceSerializerModern implements DataSourceSerializer
 
     private void saveSecuredCredentials(
         @Nullable DataSourceDescriptor dataSource,
-        @Nullable DBWNetworkProfile  profile,
+        @Nullable DBWNetworkProfile profile,
         @Nullable String subNode,
         @Nullable String userName,
         @Nullable String password) {
         assert dataSource != null|| profile != null;
-        boolean saved = !passwordWriteCanceled&& DataSourceRegistry.saveCredentialsInSecuredStorage(
+        boolean saved = !passwordWriteCanceled && DataSourceRegistry.saveCredentialsInSecuredStorage(
             registry.getProject(), dataSource, subNode, userName, password);
         if (!saved) {
             passwordWriteCanceled = true;
@@ -911,7 +920,7 @@ class DataSourceSerializerModern implements DataSourceSerializer
         @Nullable String subNode)
     {
         String[] creds = new String[2];
-        final DBASecureStorage secureStorage = dataSource == null ? DBWorkbench.getPlatform().getSecureStorage() : dataSource.getProject().getSecureStorage();
+        final DBASecureStorage secureStorage = dataSource == null ? registry.getProject().getSecureStorage() : dataSource.getProject().getSecureStorage();
         {
             try {
                 if (secureStorage.useSecurePreferences()) {

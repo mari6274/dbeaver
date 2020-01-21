@@ -76,6 +76,7 @@ import org.jkiss.dbeaver.runtime.DummyRunnableContext;
 import org.jkiss.dbeaver.runtime.RunnableContextDelegate;
 import org.jkiss.dbeaver.runtime.properties.ObjectPropertyDescriptor;
 import org.jkiss.dbeaver.ui.controls.*;
+import org.jkiss.dbeaver.ui.dialogs.EditTextDialog;
 import org.jkiss.dbeaver.ui.internal.UIActivator;
 import org.jkiss.dbeaver.ui.internal.UIMessages;
 import org.jkiss.dbeaver.utils.GeneralUtils;
@@ -572,20 +573,16 @@ public class UIUtils {
         return tipLabel;
     }
 
-    public static Text createLabelText(Composite parent, String label, String value)
-    {
+    public static Text createLabelText(Composite parent, String label, String value) {
         return createLabelText(parent, label, value, SWT.BORDER);
     }
 
-    public static Text createLabelText(Composite parent, String label, String value, int style)
-    {
+    public static Text createLabelText(Composite parent, String label, String value, int style) {
         return createLabelText(parent, label, value, style, new GridData(GridData.FILL_HORIZONTAL));
     }
 
     @NotNull
-    public static Text createLabelText(@NotNull Composite parent, @NotNull String label, @Nullable String value, int style,
-        @Nullable Object layoutData)
-    {
+    public static Text createLabelText(@NotNull Composite parent, @NotNull String label, @Nullable String value, int style, @Nullable Object layoutData) {
         Label controlLabel = createControlLabel(parent, label);
 
         Text text = new Text(parent, style);
@@ -597,6 +594,38 @@ public class UIUtils {
         if (layoutData != null) {
             text.setLayoutData(layoutData);
         }
+
+        return text;
+    }
+
+    @NotNull
+    public static Text createLabelTextAdvanced(@NotNull Composite parent, @NotNull String label, @Nullable String value, int style) {
+        Label controlLabel = createControlLabel(parent, label);
+        Composite panel = createComposite(parent, 2);
+        panel.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+
+        Text text = new Text(panel, style);
+        text.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+        fixReadonlyTextBackground(text);
+        if (value != null) {
+            text.setText(value);
+        }
+        ToolBar editTB = new ToolBar(panel, SWT.HORIZONTAL);
+        ToolItem editButton = new ToolItem(editTB, SWT.DOWN);
+        //Button editButton = new Button(panel, SWT.DOWN);
+        //editButton.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
+        //editButton.setText("...");
+        editButton.setImage(DBeaverIcons.getImage(UIIcon.EDIT)); //$NON-NLS-1$
+        editButton.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                String newText = EditTextDialog.editText(parent.getShell(), label, text.getText());
+                if (newText != null) {
+                    text.setText(newText);
+                }
+            }
+        });
+        editTB.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
 
         return text;
     }
@@ -1467,8 +1496,32 @@ public class UIUtils {
         table.addDisposeListener(e -> menuMgr.dispose());
     }
 
+    public static void setControlContextMenu(Control control, IMenuListener menuListener) {
+        MenuManager menuMgr = new MenuManager();
+        menuMgr.addMenuListener(menuListener);
+        menuMgr.setRemoveAllWhenShown(true);
+        control.setMenu(menuMgr.createContextMenu(control));
+        control.addDisposeListener(e -> menuMgr.dispose());
+    }
+
     public static void fillDefaultTableContextMenu(IContributionManager menu, final Table table) {
-        menu.add(new Action("Copy selection") {
+        if (table.getColumnCount() > 1) {
+            menu.add(new Action("Copy " + table.getColumn(0).getText()) {
+                @Override
+                public void run() {
+                    StringBuilder text = new StringBuilder();
+                    for (TableItem item : table.getSelection()) {
+                        if (text.length() > 0) text.append("\n");
+                        text.append(item.getText(0));
+                    }
+                    if (text.length() == 0) {
+                        return;
+                    }
+                    UIUtils.setClipboardContents(table.getDisplay(), TextTransfer.getInstance(), text.toString());
+                }
+            });
+        }
+        menu.add(new Action("Copy All") {
             @Override
             public void run() {
                 StringBuilder text = new StringBuilder();
@@ -1820,14 +1873,20 @@ public class UIUtils {
     }
 
     public static void setContentProposalToolTip(Control control, String toolTip, String ... variables) {
+        control.setToolTipText(getSupportedVariablesTip(toolTip, variables));
+
+    }
+
+    @NotNull
+    public static String getSupportedVariablesTip(String toolTip, String ... variables) {
         StringBuilder varsTip = new StringBuilder();
+        varsTip.append(toolTip).append(". ").append(UIMessages.pref_page_connections_tool_tip_text_allowed_variables).append(":\n");
         for (String var : variables) {
             if (varsTip.length() > 0) varsTip.append(",\n");
             varsTip.append("\t").append(GeneralUtils.variablePattern(var));
         }
         varsTip.append("."); //$NON-NLS-1$
-        control.setToolTipText(toolTip + ". " + UIMessages.pref_page_connections_tool_tip_text_allowed_variables + ":\n" + varsTip);
-
+        return varsTip.toString();
     }
 
     public static CoolItem createCoolItem(CoolBar coolBar, Control control) {
@@ -1989,5 +2048,9 @@ public class UIUtils {
         } finally {
             control.setRedraw(true);
         }
+    }
+
+    public static Font getMonospaceFont() {
+        return JFaceResources.getFont(JFaceResources.TEXT_FONT);
     }
 }

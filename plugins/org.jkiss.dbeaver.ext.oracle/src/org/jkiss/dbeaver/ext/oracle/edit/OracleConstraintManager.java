@@ -17,7 +17,6 @@
  */
 package org.jkiss.dbeaver.ext.oracle.edit;
 
-import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.ext.oracle.model.OracleObjectStatus;
 import org.jkiss.dbeaver.ext.oracle.model.OracleTableBase;
@@ -25,6 +24,7 @@ import org.jkiss.dbeaver.ext.oracle.model.OracleTableConstraint;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
 import org.jkiss.dbeaver.model.impl.sql.edit.struct.SQLConstraintManager;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
@@ -77,16 +77,8 @@ public class OracleConstraintManager extends SQLConstraintManager<OracleTableCon
         return "ALTER TABLE " + PATTERN_ITEM_TABLE +" DROP " + clause + " " + PATTERN_ITEM_CONSTRAINT; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     }
 
-    @NotNull
-    protected String getAddConstraintTypeClause(OracleTableConstraint constraint) {
-        if (constraint.getConstraintType() == DBSEntityConstraintType.UNIQUE_KEY) {
-            return "UNIQUE"; //$NON-NLS-1$
-        }
-        return super.getAddConstraintTypeClause(constraint);
-    }
-    
     @Override
-    protected void addObjectCreateActions(DBRProgressMonitor monitor, List<DBEPersistAction> actions,
+    protected void addObjectCreateActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions,
                                           ObjectCreateCommand command, Map<String, Object> options)
     {
     	OracleTableConstraint constraint = (OracleTableConstraint) command.getObject();

@@ -25,6 +25,7 @@ import org.jkiss.dbeaver.ext.postgresql.model.PostgreTablespace;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistActionAtomic;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -74,8 +75,8 @@ public class PostgreTablespaceManager extends SQLObjectEditor<PostgreTablespace,
     @Override
     protected void addObjectCreateActions(
         DBRProgressMonitor monitor,
-        List<DBEPersistAction> actions,
-        SQLObjectEditor<PostgreTablespace, PostgreDatabase>.ObjectCreateCommand command,
+        DBCExecutionContext executionContext, List<DBEPersistAction> actions,
+        ObjectCreateCommand command,
         Map<String, Object> options) {
         final PostgreTablespace tablespace = command.getObject();
 
@@ -90,8 +91,8 @@ public class PostgreTablespaceManager extends SQLObjectEditor<PostgreTablespace,
 
     @Override
     protected void addObjectDeleteActions(
-        List<DBEPersistAction> actions,
-        SQLObjectEditor<PostgreTablespace, PostgreDatabase>.ObjectDeleteCommand command,
+        DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions,
+        ObjectDeleteCommand command,
         Map<String, Object> options) {
         actions.add(
             new SQLDatabasePersistActionAtomic("Drop tablespace", "DROP TABLESPACE " + command.getObject().getName()) //$NON-NLS-2$

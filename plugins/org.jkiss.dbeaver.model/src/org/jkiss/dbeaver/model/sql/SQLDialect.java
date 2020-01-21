@@ -78,6 +78,12 @@ public interface SQLDialect {
     String[][] getStringQuoteStrings();
 
     /**
+     * Data query keywords. By default it is SELECT
+     */
+    @NotNull
+    String[] getQueryKeywords();
+
+    /**
      * Retrieves a list of execute keywords. If database doesn't support implicit execute returns empty list or null.
      * @return the list of execute keywords.
      */
@@ -90,6 +96,9 @@ public interface SQLDialect {
      */
     @NotNull
     String[] getDDLKeywords();
+
+    @NotNull
+    String[] getDMLKeywords();
 
     /**
      * Retrieves a list of all of this database's SQL keywords
@@ -321,6 +330,10 @@ public interface SQLDialect {
     @Nullable
     String getDualTableName();
 
+    /**
+     * Returns true if query is definitely transactional. Otherwise returns false, however it still may be transactional.
+     * You need to check query results to ensure that it is not transactional.
+     */
     boolean isTransactionModifyingQuery(String queryString);
 
     @Nullable

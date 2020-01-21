@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.model.struct;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -30,10 +31,11 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
  */
 public interface DBSInstance extends DBSObject
 {
+
     /**
      * Default execution context
      *
-     * @param monitor
+     * @param monitor progress monitor
      * @param meta request for metadata operations context
      * @return default data source execution context.
      */
@@ -52,10 +54,12 @@ public interface DBSInstance extends DBSObject
      *
      * @param monitor progress monitor
      * @param purpose context purpose (just a descriptive string)
+     * @param initFrom initialize new context parameters from specified context
      * @return execution context
      */
     @NotNull
-    DBCExecutionContext openIsolatedContext(@NotNull DBRProgressMonitor monitor, @NotNull String purpose) throws DBException;
+    DBCExecutionContext openIsolatedContext(@NotNull DBRProgressMonitor monitor, @NotNull String purpose, @Nullable DBCExecutionContext initFrom) throws DBException;
 
     void shutdown(DBRProgressMonitor monitor);
+
 }

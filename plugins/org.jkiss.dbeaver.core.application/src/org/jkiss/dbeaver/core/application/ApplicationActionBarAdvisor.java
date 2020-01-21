@@ -43,13 +43,13 @@ import org.jkiss.dbeaver.core.application.actions.ResetUISettingsAction;
 import org.jkiss.dbeaver.core.application.update.CheckForUpdateAction;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.tasks.ui.view.DatabaseTasksView;
 import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.actions.common.ToggleViewAction;
 import org.jkiss.dbeaver.ui.controls.StatusLineContributionItemEx;
 import org.jkiss.dbeaver.ui.navigator.database.DatabaseNavigatorView;
 import org.jkiss.dbeaver.ui.navigator.project.ProjectExplorerView;
 import org.jkiss.dbeaver.ui.navigator.project.ProjectNavigatorView;
-import org.jkiss.dbeaver.ui.task.DatabaseTasksView;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
 import org.osgi.framework.Bundle;
@@ -335,8 +335,9 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
     protected void fillStatusLine(IStatusLineManager statusLine) {
         {
             StatusLineContributionItemEx tzItem = new StatusLineContributionItemEx("Time Zone");
-            tzItem.setText(TimeZone.getDefault().getDisplayName(false, TimeZone.SHORT));
-            tzItem.setToolTip(TimeZone.getDefault().getDisplayName(true, TimeZone.LONG));
+            TimeZone tzDefault = TimeZone.getDefault();
+            tzItem.setText(tzDefault.getDisplayName(false, TimeZone.SHORT));
+            tzItem.setToolTip(tzDefault.getDisplayName(false, TimeZone.LONG));
             tzItem.setDoubleClickListener(() -> {
                 UIUtils.showMessageBox(null, "Time zone", "You can change time zone by adding parameter\n" +
                     "-D" + StandardConstants.ENV_USER_TIMEZONE  + "=<TimeZone>\n" +

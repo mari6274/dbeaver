@@ -35,11 +35,11 @@ import org.jkiss.dbeaver.model.sql.completion.SQLCompletionProposalBase;
 import org.jkiss.dbeaver.model.sql.completion.SQLCompletionRequest;
 import org.jkiss.dbeaver.model.sql.parser.SQLParserPartitions;
 import org.jkiss.dbeaver.model.sql.parser.SQLWordPartDetector;
+import org.jkiss.dbeaver.model.sql.registry.SQLCommandHandlerDescriptor;
+import org.jkiss.dbeaver.model.sql.registry.SQLCommandsRegistry;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.editors.sql.SQLEditorBase;
 import org.jkiss.dbeaver.ui.editors.sql.SQLPreferenceConstants;
-import org.jkiss.dbeaver.ui.editors.sql.registry.SQLCommandHandlerDescriptor;
-import org.jkiss.dbeaver.ui.editors.sql.registry.SQLCommandsRegistry;
 import org.jkiss.dbeaver.ui.editors.sql.templates.SQLContext;
 import org.jkiss.dbeaver.ui.editors.sql.templates.SQLTemplateCompletionProposal;
 import org.jkiss.dbeaver.ui.editors.sql.templates.SQLTemplatesRegistry;
@@ -163,7 +163,7 @@ public class SQLCompletionProcessor implements IContentAssistProcessor
                 commandProposals.add(new SQLCommandCompletionProposal(request, command));
             }
         }
-        return commandProposals.toArray(new ICompletionProposal[commandProposals.size()]);
+        return commandProposals.toArray(new ICompletionProposal[0]);
     }
 
     @NotNull
@@ -185,7 +185,7 @@ public class SQLCompletionProcessor implements IContentAssistProcessor
             }
         }
         templateProposals.sort(Comparator.comparing(TemplateProposal::getDisplayString));
-        return templateProposals.toArray(new ICompletionProposal[templateProposals.size()]);
+        return templateProposals.toArray(new ICompletionProposal[0]);
     }
 
     /**

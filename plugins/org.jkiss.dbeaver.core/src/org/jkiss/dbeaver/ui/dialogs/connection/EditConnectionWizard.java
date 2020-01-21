@@ -39,6 +39,7 @@ import org.jkiss.dbeaver.ui.IActionConstants;
 import org.jkiss.dbeaver.ui.ICompositeDialogPage;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.actions.datasource.DataSourceHandler;
+import org.jkiss.dbeaver.ui.dialogs.BaseAuthDialog;
 import org.jkiss.dbeaver.ui.editors.data.preferences.PrefPageDataFormat;
 import org.jkiss.dbeaver.ui.editors.data.preferences.PrefPageResultSetEditors;
 import org.jkiss.dbeaver.ui.editors.data.preferences.PrefPageResultSetMain;
@@ -179,7 +180,7 @@ public class EditConnectionWizard extends ConnectionWizard
                 return page;
             }
             if (page instanceof ICompositeDialogPage) {
-                final IDialogPage[] subPages = ((ICompositeDialogPage) page).getSubPages(false);
+                final IDialogPage[] subPages = ((ICompositeDialogPage) page).getSubPages(false, true);
                 if (subPages != null) {
                     for (IDialogPage subPage : subPages) {
                         if (subPage instanceof IWizardPage && ((IWizardPage) subPage).getName().equals(name)) {

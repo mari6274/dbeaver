@@ -34,6 +34,7 @@ import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.OSDescriptor;
+import org.jkiss.dbeaver.model.sql.SQLDialectMetadata;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
 import org.jkiss.dbeaver.registry.NativeClientDescriptor;
 import org.jkiss.dbeaver.registry.RegistryConstants;
@@ -41,7 +42,6 @@ import org.jkiss.dbeaver.registry.VersionUtils;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
-import org.jkiss.dbeaver.utils.SystemVariablesResolver;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
 import org.jkiss.utils.xml.XMLBuilder;
@@ -615,6 +615,12 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
     @Override
     public String getPropertiesWebURL() {
         return propertiesWebURL;
+    }
+
+    @NotNull
+    @Override
+    public SQLDialectMetadata getScriptDialect() {
+        return providerDescriptor.getScriptDialect();
     }
 
     @Override
@@ -1241,30 +1247,4 @@ public class DriverDescriptor extends AbstractDescriptor implements DBPDriver {
         }
     }
 
-    private static String replacePathVariables(String path) {
-        return GeneralUtils.replaceVariables(path, new DriverVariablesResolver());
-    }
-
-    private static String substitutePathVariables(Map<String, String> pathSubstitutions, String path) {
-        for (Map.Entry<String, String> ps : pathSubstitutions.entrySet()) {
-            if (path.startsWith(ps.getKey())) {
-                path = GeneralUtils.variablePattern(ps.getValue()) + path.substring(ps.getKey().length());
-                break;
-            }
-        }
-        return path;
-    }
-
-    private static class DriverVariablesResolver extends SystemVariablesResolver {
-        private static final String VAR_DRIVERS_HOME = "drivers_home";
-
-        @Override
-        public String get(String name) {
-            if (name.equalsIgnoreCase(VAR_DRIVERS_HOME)) {
-                return getCustomDriversHome().getAbsolutePath();
-            } else {
-                return super.get(name);
-            }
-        }
-    }
 }

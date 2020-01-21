@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.model.edit;
 
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPObject;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 
 import java.util.Map;
@@ -38,9 +39,10 @@ public interface DBECommand<OBJECT_TYPE extends DBPObject> {
      * Validates command.
      * If command is fine then just returns, otherwise throws an exception
      * @throws DBException contains information about invalid command state
+     * @param monitor
      * @param options
      */
-    void validateCommand(Map<String, Object> options) throws DBException;
+    void validateCommand(DBRProgressMonitor monitor, Map<String, Object> options) throws DBException;
 
     void updateModel();
 
@@ -48,6 +50,6 @@ public interface DBECommand<OBJECT_TYPE extends DBPObject> {
         DBECommand<?> prevCommand,
         Map<Object, Object> userParams);
 
-    DBEPersistAction[] getPersistActions(DBRProgressMonitor monitor, Map<String, Object> options) throws DBException;
+    DBEPersistAction[] getPersistActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, Map<String, Object> options) throws DBException;
 
 }

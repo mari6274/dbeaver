@@ -47,20 +47,22 @@ import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProcessDescriptor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRShellCommand;
-import org.jkiss.dbeaver.model.struct.*;
+import org.jkiss.dbeaver.model.sql.SQLDialectMetadata;
+import org.jkiss.dbeaver.model.struct.DBSInstance;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
+import org.jkiss.dbeaver.model.struct.DBSObjectState;
 import org.jkiss.dbeaver.model.virtual.DBVModel;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.registry.formatter.DataFormatterProfile;
 import org.jkiss.dbeaver.registry.internal.RegistryMessages;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.IVariableResolver;
-import org.jkiss.dbeaver.runtime.TasksJob;
 import org.jkiss.dbeaver.runtime.properties.PropertyCollector;
 import org.jkiss.dbeaver.utils.SystemVariablesResolver;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.text.DateFormat;
 import java.util.*;
 
@@ -78,16 +80,19 @@ public class DataSourceDescriptor
     private static final Log log = Log.getLog(DataSourceDescriptor.class);
 
     public static final String[][] CONNECT_VARIABLES = new String[][]{
-        {DBPConnectionConfiguration.VARIABLE_HOST, "target host"},
-        {DBPConnectionConfiguration.VARIABLE_PORT, "target port"},
+        {DBPConnectionConfiguration.VARIABLE_HOST, "target database host"},
+        {DBPConnectionConfiguration.VARIABLE_PORT, "target database port"},
         {DBPConnectionConfiguration.VARIABLE_SERVER, "target server name"},
-        {DBPConnectionConfiguration.VARIABLE_DATABASE, "target database"},
-        {DBPConnectionConfiguration.VARIABLE_USER, "user name"},
-        {DBPConnectionConfiguration.VARIABLE_PASSWORD, "password (plain)"},
-        {DBPConnectionConfiguration.VARIABLE_URL, "JDBC URL"},
+        {DBPConnectionConfiguration.VARIABLE_DATABASE, "target database name"},
+        {DBPConnectionConfiguration.VARIABLE_USER, "database user name"},
+        {DBPConnectionConfiguration.VARIABLE_PASSWORD, "database password (plain)"},
+        {DBPConnectionConfiguration.VARIABLE_URL, "connection URL"},
+
+        {DBPConnectionConfiguration.VAR_PROJECT_PATH, "project path"},
+        {DBPConnectionConfiguration.VAR_PROJECT_NAME, "project name"},
 
         {SystemVariablesResolver.VAR_WORKSPACE, "workspace path"},
-        {SystemVariablesResolver.VAR_HOME, "user home path"},
+        {SystemVariablesResolver.VAR_HOME, "OS user home path"},
         {SystemVariablesResolver.VAR_DBEAVER_HOME, "application install path"},
         {SystemVariablesResolver.VAR_APP_NAME, "application name"},
         {SystemVariablesResolver.VAR_APP_VERSION, "application version"},
@@ -102,7 +107,6 @@ public class DataSourceDescriptor
     private DriverDescriptor driver;
     @NotNull
     private DBPConnectionConfiguration connectionInfo;
-    private DBPConnectionConfiguration tunnelConnectionInfo;
     // Copy of connection info with resolved params (cache)
     private DBPConnectionConfiguration resolvedConnectionInfo;
 
@@ -264,12 +268,8 @@ public class DataSourceDescriptor
 
     @NotNull
     @Override
-    public DBPConnectionConfiguration getActualConnectionConfiguration()
-    {
-        return
-            this.resolvedConnectionInfo != null ?
-                this.resolvedConnectionInfo :
-                (this.tunnelConnectionInfo != null ? tunnelConnectionInfo : connectionInfo);
+    public DBPConnectionConfiguration getActualConnectionConfiguration() {
+        return this.resolvedConnectionInfo != null ? this.resolvedConnectionInfo : this.connectionInfo;
     }
 
     @NotNull
@@ -378,25 +378,7 @@ public class DataSourceDescriptor
     }
 
     @Override
-    public void setDefaultAutoCommit(final boolean autoCommit, @Nullable DBCExecutionContext updateContext, boolean updateConnection, @Nullable final Runnable onFinish) throws DBException {
-        if (updateContext != null) {
-            final DBCTransactionManager txnManager = DBUtils.getTransactionManager(updateContext);
-            if (updateConnection && txnManager != null) {
-                TasksJob.runTask("Set auto-commit mode", monitor -> {
-                    try {
-                        // Change auto-commit mode
-                        txnManager.setAutoCommit(monitor, autoCommit);
-                    } catch (DBCException e) {
-                        throw new InvocationTargetException(e);
-                    } finally {
-                        monitor.done();
-                        if (onFinish != null) {
-                            onFinish.run();
-                        }
-                    }
-                });
-            }
-        }
+    public void setDefaultAutoCommit(final boolean autoCommit) {
         // Save in preferences
         if (autoCommit == getConnectionConfiguration().getConnectionType().isAutocommit()) {
             connectionInfo.getBootstrap().setDefaultAutoCommit(null);
@@ -432,25 +414,11 @@ public class DataSourceDescriptor
     }
 
     @Override
-    public void setDefaultTransactionsIsolation(@Nullable final DBPTransactionIsolation isolationLevel) throws DBException {
+    public void setDefaultTransactionsIsolation(@Nullable final DBPTransactionIsolation isolationLevel) {
         if (isolationLevel == null) {
             connectionInfo.getBootstrap().setDefaultTransactionIsolation(null);
         } else {
             connectionInfo.getBootstrap().setDefaultTransactionIsolation(isolationLevel.getCode());
-            if (dataSource != null) {
-                TasksJob.runTask("Set transactions isolation level", monitor -> {
-                    DBCTransactionManager txnManager = DBUtils.getTransactionManager(DBUtils.getDefaultContext(dataSource.getDefaultInstance(), false));
-                    if (txnManager != null) {
-                        try {
-                            if (!txnManager.getTransactionIsolation().equals(isolationLevel)) {
-                                txnManager.setTransactionIsolation(monitor, isolationLevel);
-                            }
-                        } catch (DBCException e) {
-                            throw new InvocationTargetException(e);
-                        }
-                    }
-                });
-            }
         }
     }
 
@@ -645,6 +613,12 @@ public class DataSourceDescriptor
         return connectTime;
     }
 
+    @NotNull
+    @Override
+    public SQLDialectMetadata getScriptDialect() {
+        return driver.getScriptDialect();
+    }
+
     public boolean isLocked() {
         return !CommonUtils.isEmpty(lockPasswordHash);
     }
@@ -733,19 +707,50 @@ public class DataSourceDescriptor
         processEvents(monitor, DBPConnectionEventType.BEFORE_CONNECT);
 
         connecting = true;
-        tunnelConnectionInfo = null;
         resolvedConnectionInfo = null;
         try {
+            // Resolve variables
+            if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS) ||
+                !CommonUtils.isEmpty(connectionInfo.getConfigProfileName()) ||
+                !CommonUtils.isEmpty(connectionInfo.getUserProfileName()))
+            {
+                this.resolvedConnectionInfo = new DBPConnectionConfiguration(connectionInfo);
+                // Update config from profile
+                if (!CommonUtils.isEmpty(connectionInfo.getConfigProfileName())) {
+                    // Update config from profile
+                    DBWNetworkProfile profile = registry.getNetworkProfile(resolvedConnectionInfo.getConfigProfileName());
+                    if (profile != null) {
+                        for (DBWHandlerConfiguration handlerCfg : profile.getConfigurations()) {
+                            if (handlerCfg.isEnabled()) {
+                                resolvedConnectionInfo.updateHandler(handlerCfg);
+                            }
+                        }
+                    }
+                }
+                if (!CommonUtils.isEmpty(resolvedConnectionInfo.getUserProfileName())) {
+
+                }
+                // Process variables
+                if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS)) {
+                    IVariableResolver variableResolver = new DataSourceVariableResolver(
+                        this, this.resolvedConnectionInfo);
+                    this.resolvedConnectionInfo.resolveDynamicVariables(variableResolver);
+                }
+
+            } else {
+                resolvedConnectionInfo = connectionInfo;
+            }
+
             // Handle tunnelHandler
             // Open tunnelHandler and replace connection info with new one
             this.proxyHandler = null;
             this.tunnelHandler = null;
             DBWHandlerConfiguration tunnelConfiguration = null, proxyConfiguration = null;
-            for (DBWHandlerConfiguration handler : connectionInfo.getHandlers()) {
+            for (DBWHandlerConfiguration handler : resolvedConnectionInfo.getHandlers()) {
                 if (handler.isEnabled()) {
                     // Set driver explicitly.
                     // Handler config may have null driver if it was copied from profile config.
-                    handler.setDriver(getDriver());
+                    handler.setDataSource(this);
 
                     if (handler.getType() == DBWHandlerType.TUNNEL) {
                         tunnelConfiguration = handler;
@@ -761,7 +766,7 @@ public class DataSourceDescriptor
             if (proxyConfiguration != null) {
                 monitor.subTask("Initialize proxy");
                 proxyHandler = proxyConfiguration.createHandler(DBWNetworkHandler.class);
-                proxyHandler.initializeHandler(monitor, registry.getPlatform(), proxyConfiguration, connectionInfo);
+                proxyHandler.initializeHandler(monitor, registry.getPlatform(), proxyConfiguration, resolvedConnectionInfo);
             }
 
             if (tunnelConfiguration != null) {
@@ -779,24 +784,9 @@ public class DataSourceDescriptor
                         }
                     }
 
-/*
-                    for (DBWHandlerConfiguration handler : getConnectionConfiguration().getDeclaredHandlers()) {
-                        if (handler.isEnabled() && handler.isSecured() && !handler.isSavePassword()) {
-                            if (!DataSourceHandler.askForPassword(this, handler)) {
-                                DataSourceHandler.updateDataSourceObject(this);
-                                return false;
-                            }
-                        }
-                    }
-*/
-
-                    if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS)) {
-                        tunnelConfiguration = new DBWHandlerConfiguration(tunnelConfiguration);
-                        tunnelConfiguration.resolveSystemEnvironmentVariables();
-                    }
                     DBExecUtils.startContextInitiation(this);
                     try {
-                        tunnelConnectionInfo = tunnelHandler.initializeHandler(monitor, registry.getPlatform(), tunnelConfiguration, connectionInfo);
+                        resolvedConnectionInfo = tunnelHandler.initializeHandler(monitor, registry.getPlatform(), tunnelConfiguration, resolvedConnectionInfo);
                     } finally {
                         DBExecUtils.finishContextInitiation(this);
                     }
@@ -807,31 +797,6 @@ public class DataSourceDescriptor
             }
 
             monitor.subTask("Connect to data source");
-
-            if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS) ||
-                !CommonUtils.isEmpty(connectionInfo.getConfigProfileName()) ||
-                !CommonUtils.isEmpty(connectionInfo.getUserProfileName()))
-            {
-                this.resolvedConnectionInfo = new DBPConnectionConfiguration(this.tunnelConnectionInfo != null ? tunnelConnectionInfo : connectionInfo);
-                if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS)) {
-                    this.resolvedConnectionInfo.resolveDynamicVariables();
-                }
-                if (!CommonUtils.isEmpty(connectionInfo.getConfigProfileName())) {
-                    // Update config from profile
-                    DBWNetworkProfile profile = registry.getNetworkProfile(connectionInfo.getConfigProfileName());
-                    if (profile != null) {
-                        for (DBWHandlerConfiguration handlerCfg : profile.getConfigurations()) {
-                            if (handlerCfg.isEnabled()) {
-                                resolvedConnectionInfo.updateHandler(handlerCfg);
-                            }
-                        }
-                    }
-                }
-                if (!CommonUtils.isEmpty(connectionInfo.getUserProfileName())) {
-
-                }
-
-            }
 
             this.dataSource = getDriver().getDataSourceProvider().openDataSource(monitor, this);
             this.connectTime = new Date();
@@ -844,9 +809,6 @@ public class DataSourceDescriptor
                 } catch (Throwable e) {
                     log.error("Error initializing datasource", e);
                 }
-
-                // Change connection properties
-                initConnectionState(monitor);
             }
 
             this.connectFailed = false;
@@ -874,7 +836,6 @@ public class DataSourceDescriptor
                     log.error("Error closing tunnel", e);
                 } finally {
                     tunnelHandler = null;
-                    tunnelConnectionInfo = null;
                 }
             }
             proxyHandler = null;
@@ -895,33 +856,6 @@ public class DataSourceDescriptor
             monitor.done();
             connecting = false;
         }
-    }
-
-    private void initConnectionState(DBRProgressMonitor monitor) throws DBException {
-        if (dataSource == null) {
-            return;
-        }
-
-        // Set active object
-        if (dataSource instanceof DBSObjectContainer) {
-            String activeObject = getConnectionConfiguration().getBootstrap().getDefaultObjectName();
-            if (!CommonUtils.isEmptyTrimmed(activeObject)) {
-                DBSObjectContainer schemaContainer = DBUtils.getChangeableObjectContainer((DBSObjectContainer) dataSource);
-                if (schemaContainer != null && schemaContainer instanceof DBSObjectSelector) {
-                    DBSObject child = schemaContainer.getChild(monitor, activeObject);
-                    if (child != null) {
-                        try {
-                            ((DBSObjectSelector) schemaContainer).setDefaultObject(monitor, child);
-                        } catch (DBException e) {
-                            log.warn("Can't select active object", e);
-                        }
-                    } else {
-                        log.debug("Object '" + activeObject + "' not found");
-                    }
-                }
-            }
-        }
-
     }
 
     private void processEvents(DBRProgressMonitor monitor, DBPConnectionEventType eventType)
@@ -1030,7 +964,6 @@ public class DataSourceDescriptor
             }
 
             this.dataSource = null;
-            this.tunnelConnectionInfo = null;
             this.resolvedConnectionInfo = null;
             this.connectTime = null;
 

@@ -558,9 +558,9 @@ class ResultSetPersister {
                                 NLS.bind(
                                     ResultSetMessages.controls_resultset_viewer_status_inserted_,
                                     new Object[]{
-                                        DataUpdaterJob.this.insertStats.getRowsUpdated(),
-                                        DataUpdaterJob.this.deleteStats.getRowsUpdated(),
-                                        DataUpdaterJob.this.updateStats.getRowsUpdated()}));
+                                        ResultSetUtils.formatRowCount(DataUpdaterJob.this.insertStats.getRowsUpdated()),
+                                        ResultSetUtils.formatRowCount(DataUpdaterJob.this.deleteStats.getRowsUpdated()),
+                                        ResultSetUtils.formatRowCount(DataUpdaterJob.this.updateStats.getRowsUpdated())}));
                         } else {
                             DBWorkbench.getPlatformUI().showError("Data error", "Error synchronizing data with database", error);
                             viewer.setStatus(GeneralUtils.getFirstMessage(error), DBPMessageType.ERROR);
@@ -580,9 +580,24 @@ class ResultSetPersister {
 
         private Throwable executeStatements(DBRProgressMonitor monitor) {
             try (DBCSession session = getExecutionContext().openSession(monitor, DBCExecutionPurpose.USER, ResultSetMessages.controls_resultset_viewer_job_update)) {
+
                 monitor.beginTask(
                     ResultSetMessages.controls_resultset_viewer_monitor_aply_changes,
                     ResultSetPersister.this.deleteStatements.size() + ResultSetPersister.this.insertStatements.size() + ResultSetPersister.this.updateStatements.size() + 1);
+
+                if (!generateScript) {
+                    IResultSetContainer container = viewer.getContainer();
+                    if (container instanceof ISmartTransactionManager) {
+                        if (((ISmartTransactionManager) container).isSmartAutoCommit()) {
+                            DBCTransactionManager txnManager = DBUtils.getTransactionManager(session.getExecutionContext());
+                            if (txnManager != null && txnManager.isAutoCommit()) {
+                                monitor.subTask("Disable auto-commit mode");
+                                txnManager.setAutoCommit(monitor, false);
+                            }
+                        }
+                    }
+                }
+
                 Throwable[] error = new Throwable[1];
                 DBExecUtils.tryExecuteRecover(monitor, session.getDataSource(), param -> {
                     error[0] = executeStatements(session);

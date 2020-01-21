@@ -78,7 +78,7 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
         this.platform = platform;
         this.project = project;
 
-        loadDataSources(false);
+        loadDataSources(true);
         DataSourceProviderRegistry.getInstance().fireRegistryChange(this, true);
 
         addDataSourceListener(modelChangeListener);
@@ -663,6 +663,13 @@ public class DataSourceRegistry implements DBPDataSourceRegistry {
                 List<DataSourceDescriptor> localDataSources = getDataSources(origin);
 
                 IFile configFile = origin.getSourceFile();
+
+                try {
+                    configFile.getParent().refreshLocal(IResource.DEPTH_ONE, new NullProgressMonitor());
+                } catch (Exception e) {
+                    log.debug("Error refreshing config directory", e);
+                }
+
                 if (origin.isDefault()) {
                     if (project.getFormat() == ProjectMetadata.ProjectFormat.MODERN) {
                         configFile = getModernConfigFile();

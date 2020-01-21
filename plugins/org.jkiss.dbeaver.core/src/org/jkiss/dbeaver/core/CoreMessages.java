@@ -42,6 +42,7 @@ public class CoreMessages extends NLS {
 	public static String action_menu_transaction_autocommit_name;
 	public static String action_menu_transaction_manualcommit_description;
 	public static String action_menu_transaction_autocommit_description;
+	public static String action_menu_transaction_smart_auto_commit;
 	public static String action_menu_tools_find_in_navigator;
 
 	public static String action_menu_transactionMonitor_totalStatement;
@@ -88,10 +89,6 @@ public class CoreMessages extends NLS {
 	public static String dialog_about_label_version;
 	public static String dialog_about_title;
 
-	public static String dialog_connection_auth_checkbox_save_password;
-	public static String dialog_connection_auth_group_user_cridentials;
-	public static String dialog_connection_auth_label_password;
-	public static String dialog_connection_auth_label_username;
 	public static String dialog_connection_button_test;
 	public static String dialog_connection_events_checkbox_show_process;
 	public static String dialog_connection_events_checkbox_terminate_at_disconnect;
@@ -198,10 +195,6 @@ public class CoreMessages extends NLS {
 	public static String dialog_migrate_wizard_start_description;
 	public static String dialog_migrate_wizard_start_title;
 	public static String dialog_migrate_wizard_window_title;
-	public static String dialog_connection_network_socket_label_host;
-	public static String dialog_connection_network_socket_label_port;
-	public static String dialog_connection_network_socket_label_username;
-	public static String dialog_connection_network_socket_label_password;
 	public static String dialog_new_connection_wizard_monitor_load_data_sources;
 	public static String dialog_new_connection_wizard_start_description;
 	public static String dialog_new_connection_wizard_start_title;
@@ -393,20 +386,6 @@ public class CoreMessages extends NLS {
     public static String toolbar_editors_sql_run_scriptNew_name;
 	public static String toolbar_editors_sql_run_explain_name;
 
-	public static String tools_script_execute_wizard_task_completed;
-	public static String tools_wizard_error_task_error_message;
-	public static String tools_wizard_error_task_error_title;
-	public static String tools_wizard_error_task_canceled;
-	public static String tools_wizard_log_process_exit_code;
-	public static String tools_wizard_log_io_error;
-	public static String tools_wizard_message_client_home_not_found;
-	public static String tools_wizard_message_no_client_home;
-	public static String tools_wizard_page_log_task_finished;
-	public static String tools_wizard_page_log_task_log_reader;
-	public static String tools_wizard_page_log_task_progress;
-	public static String tools_wizard_page_log_task_progress_log;
-	public static String tools_wizard_page_log_task_started_at;
-
 	public static String editor_file_open_in_explorer;
 	public static String editor_file_copy_path;
 	public static String editor_file_rename;
@@ -417,14 +396,17 @@ public class CoreMessages extends NLS {
 
 	public static String dialog_connection_network_title;
 	public static String dialog_connection_wizard_final_label_connection_type;
+	public static String dialog_connection_wizard_final_label_connection_types_edit;
 	public static String dialog_connection_wizard_final_label_edit;
 	public static String dialog_connection_wizard_final_label_connection_folder;
 	public static String dialog_connection_wizard_final_label_connection;
 	public static String dialog_connection_wizard_final_label_isolation_level;
+	public static String dialog_connection_wizard_final_label_default_database;
+	public static String dialog_connection_wizard_final_label_default_database_tooltip;
 	public static String dialog_connection_wizard_final_label_default_schema;
+	public static String dialog_connection_wizard_final_label_default_schema_tooltip;
 	public static String dialog_connection_wizard_final_label_keepalive;
 	public static String dialog_connection_wizard_final_label_isolation_level_tooltip;
-	public static String dialog_connection_wizard_final_label_default_schema_tooltip;
 	public static String dialog_connection_wizard_final_label_keepalive_tooltip;
 	public static String dialog_connection_wizard_final_label_bootstrap_query;
 	public static String dialog_connection_wizard_configure;
@@ -676,12 +658,8 @@ public class CoreMessages extends NLS {
 
 	public static String transaction_log_dialog_error_not_connected;
 
-    public static String viewer_details_item_details;
-    public static String viewer_details_item_session_details;
     public static String viewer_selector_control_text_classic;
 	public static String viewer_selector_control_text_gallery;
-	public static String viewer_sql_plan_item_execution_plan;
-    public static String viewer_view_item_sql;
 
     static {
 		// initialize resource bundle

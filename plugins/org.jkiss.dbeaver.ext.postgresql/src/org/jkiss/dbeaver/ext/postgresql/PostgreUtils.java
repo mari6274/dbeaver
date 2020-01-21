@@ -37,10 +37,7 @@ import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.data.DBDValueHandler;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.edit.DBERegistry;
-import org.jkiss.dbeaver.model.exec.DBCAttributeMetaData;
-import org.jkiss.dbeaver.model.exec.DBCEntityMetaData;
-import org.jkiss.dbeaver.model.exec.DBCException;
-import org.jkiss.dbeaver.model.exec.DBCSession;
+import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
@@ -424,7 +421,7 @@ public class PostgreUtils {
                 try {
                     DBCEntityMetaData entityMetaData = ((DBCAttributeMetaData) column).getEntityMetaData();
                     if (entityMetaData != null) {
-                        DBSEntity docEntity = DBUtils.getEntityFromMetaData(session.getProgressMonitor(), session.getDataSource(), entityMetaData);
+                        DBSEntity docEntity = DBUtils.getEntityFromMetaData(session.getProgressMonitor(), session.getExecutionContext(), entityMetaData);
                         if (docEntity != null) {
                             DBSEntityAttribute attribute = docEntity.getAttribute(session.getProgressMonitor(), ((DBCAttributeMetaData) column).getName());
                             if (attribute instanceof DBSTypedObjectEx) {
@@ -484,25 +481,29 @@ public class PostgreUtils {
         if (CommonUtils.isEmpty(string)) {
             return convertStringToSimpleValue(session, itemType, string);
         }
-        switch (itemType.getTypeID()) {
-            case Types.BOOLEAN:
-                return string.length() > 0 && Character.toLowerCase(string.charAt(0)) == 't';
-            case Types.TINYINT:
-                return Byte.parseByte(string);
-            case Types.SMALLINT:
-                return Short.parseShort(string);
-            case Types.INTEGER:
-                return Integer.parseInt(string);
-            case Types.BIGINT:
-                return Long.parseLong(string);
-            case Types.FLOAT:
-                return Float.parseFloat(string);
-            case Types.REAL:
-            case Types.DOUBLE:
-                return Double.parseDouble(string);
-            default: {
-                return convertStringToSimpleValue(session, itemType, string);
+        try {
+            switch (itemType.getTypeID()) {
+                case Types.BOOLEAN:
+                    return string.length() > 0 && Character.toLowerCase(string.charAt(0)) == 't';
+                case Types.TINYINT:
+                    return Byte.parseByte(string);
+                case Types.SMALLINT:
+                    return Short.parseShort(string);
+                case Types.INTEGER:
+                    return Integer.parseInt(string);
+                case Types.BIGINT:
+                    return Long.parseLong(string);
+                case Types.FLOAT:
+                    return Float.parseFloat(string);
+                case Types.REAL:
+                case Types.DOUBLE:
+                    return Double.parseDouble(string);
+                default: {
+                    return convertStringToSimpleValue(session, itemType, string);
+                }
             }
+        } catch (NumberFormatException e) {
+            return string;
         }
     }
 
@@ -702,6 +703,7 @@ public class PostgreUtils {
 
     public static void getObjectGrantPermissionActions(DBRProgressMonitor monitor, PostgrePrivilegeOwner object, List<DBEPersistAction> actions, Map<String, Object> options) throws DBException {
         if (object.isPersisted() && CommonUtils.getOption(options, PostgreConstants.OPTION_DDL_SHOW_PERMISSIONS)) {
+            DBCExecutionContext executionContext = DBUtils.getDefaultContext(object, true);
             actions.add(new SQLDatabasePersistActionComment(object.getDataSource(), "Permissions"));
 
             // Owner
@@ -721,10 +723,10 @@ public class PostgreUtils {
                     if (permission.hasAllPrivileges(object)) {
                         Collections.addAll(actions,
                                 new PostgreCommandGrantPrivilege(permission.getOwner(), true, permission, new PostgrePrivilegeType[]{PostgrePrivilegeType.ALL})
-                                        .getPersistActions(monitor, options));
+                                        .getPersistActions(monitor, executionContext, options));
                     } else {
                         PostgreCommandGrantPrivilege grant = new PostgreCommandGrantPrivilege(permission.getOwner(), true, permission, permission.getPrivileges());
-                        Collections.addAll(actions, grant.getPersistActions(monitor, options));
+                        Collections.addAll(actions, grant.getPersistActions(monitor, executionContext, options));
                     }
                 }
             }
@@ -737,6 +739,6 @@ public class PostgreUtils {
     }
 
     public static String getRealSchemaName(PostgreDatabase database, String name) {
-        return name.replace("$user", database.getActiveUser());
+        return name.replace("$user", database.getDefaultContext().getActiveUser());
     }
 }

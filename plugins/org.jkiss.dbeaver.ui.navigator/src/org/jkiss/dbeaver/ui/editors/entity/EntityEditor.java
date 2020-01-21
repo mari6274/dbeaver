@@ -69,8 +69,8 @@ import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 /**
  * EntityEditor
@@ -473,17 +473,18 @@ public class EntityEditor extends MultiPageDatabaseEditor
                 for (DBECommand command : commands) {
                     monitor.subTask(command.getTitle());
                     try {
-                        command.validateCommand(validateOptions);
+                        command.validateCommand(monitor, validateOptions);
                     } catch (final DBException e) {
                         throw new InvocationTargetException(e);
                     }
                     Map<String, Object> options = new HashMap<>();
                     options.put(DBPScriptObject.OPTION_OBJECT_SAVE, true);
 
+                    DBPDataSource dataSource = getDatabaseObject().getDataSource();
                     try {
-                        DBEPersistAction[] persistActions = command.getPersistActions(monitor, options);
+                        DBEPersistAction[] persistActions = command.getPersistActions(monitor, getExecutionContext(), options);
                         script.append(SQLUtils.generateScript(
-                            commandContext.getExecutionContext().getDataSource(),
+                            dataSource,
                             persistActions,
                             false));
                     } catch (DBException e) {
@@ -543,7 +544,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
         // Command listener
         commandListener = new DBECommandAdapter() {
             @Override
-            public void onCommandChange(DBECommand command)
+            public void onCommandChange(DBECommand<?> command)
             {
                 UIUtils.syncExec(() -> firePropertyChange(IEditorPart.PROP_DIRTY));
             }
@@ -828,12 +829,11 @@ public class EntityEditor extends MultiPageDatabaseEditor
         }
     }
 
-    private void addActionsContributor(IEditorPart editor, Class<? extends IEditorActionBarContributor> contributorClass) throws InstantiationException, IllegalAccessException
-    {
+    private void addActionsContributor(IEditorPart editor, Class<? extends IEditorActionBarContributor> contributorClass) throws Exception {
         GlobalContributorManager contributorManager = GlobalContributorManager.getInstance();
         IEditorActionBarContributor contributor = contributorManager.getContributor(contributorClass);
         if (contributor == null) {
-            contributor = contributorClass.newInstance();
+            contributor = contributorClass.getDeclaredConstructor().newInstance();
         }
         contributorManager.addContributor(contributor, editor);
         actionContributors.put(editor, contributor);
@@ -1116,6 +1116,11 @@ public class EntityEditor extends MultiPageDatabaseEditor
             log.error(e);
             return false;
         }
+    }
+
+    @Override
+    public boolean isRelationalObject(DBSObject object) {
+        return true;
     }
 
 }

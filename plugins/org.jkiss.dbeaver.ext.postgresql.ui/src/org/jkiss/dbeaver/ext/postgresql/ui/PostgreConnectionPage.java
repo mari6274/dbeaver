@@ -20,11 +20,11 @@ import org.eclipse.jface.dialogs.IDialogPage;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.ModifyListener;
-import org.eclipse.swt.events.SelectionAdapter;
-import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.widgets.*;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Text;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
 import org.jkiss.dbeaver.ext.postgresql.PostgreMessages;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
@@ -53,8 +53,6 @@ public class PostgreConnectionPage extends ConnectionPageAbstract implements ICo
     private Text usernameText;
     private Text passwordText;
     private ClientHomesSelector homesSelector;
-    private Button showNonDefault;
-    private Button showTemplates;
     private boolean activated = false;
 
     @Override
@@ -132,34 +130,11 @@ public class PostgreConnectionPage extends ConnectionPageAbstract implements ICo
 
         createPasswordControls(addrGroup, passwordText, 2);
 
-        {
-            Composite buttonsGroup = new Composite(addrGroup, SWT.NONE);
-            gd = new GridData(GridData.FILL_HORIZONTAL);
-            gd.horizontalSpan = 2;
-            buttonsGroup.setLayoutData(gd);
-            buttonsGroup.setLayout(new GridLayout(2, false));
-            homesSelector = new ClientHomesSelector(buttonsGroup, SWT.NONE, PostgreMessages.dialog_setting_connection_localClient);
-            gd = new GridData(GridData.FILL_HORIZONTAL | GridData.HORIZONTAL_ALIGN_BEGINNING);
-            homesSelector.getPanel().setLayoutData(gd);
-        }
+        UIUtils.createHorizontalLine(addrGroup, 4, 10);
 
-        {
-            Group secureGroup = new Group(addrGroup, SWT.NONE);
-            secureGroup.setText(PostgreMessages.dialog_setting_connection_settings);
-            gd = new GridData(GridData.FILL_HORIZONTAL);
-            gd.horizontalSpan = 4;
-            secureGroup.setLayoutData(gd);
-            secureGroup.setLayout(new GridLayout(2, false));
-
-            showNonDefault = UIUtils.createCheckbox(secureGroup, PostgreMessages.dialog_setting_connection_nondefaultDatabase, PostgreMessages.dialog_setting_connection_nondefaultDatabase_tip, false, 2);
-            showNonDefault.addSelectionListener(new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
-                    showTemplates.setEnabled(showNonDefault.getSelection());
-                }
-            });
-            showTemplates = UIUtils.createCheckbox(secureGroup, PostgreMessages.dialog_setting_connection_show_templates, PostgreMessages.dialog_setting_connection_show_templates_tip, false, 2);
-        }
+        homesSelector = new ClientHomesSelector(addrGroup, PostgreMessages.dialog_setting_connection_localClient, false);
+        gd = new GridData(GridData.FILL_HORIZONTAL | GridData.HORIZONTAL_ALIGN_BEGINNING);
+        homesSelector.getPanel().setLayoutData(gd);
 
         createDriverPanel(addrGroup);
         setControl(addrGroup);
@@ -237,10 +212,6 @@ public class PostgreConnectionPage extends ConnectionPageAbstract implements ICo
         }
         homesSelector.populateHomes(driver, connectionInfo.getClientHomeId(), site.isNew());
 
-        showNonDefault.setSelection(CommonUtils.getBoolean(connectionInfo.getProviderProperty(PostgreConstants.PROP_SHOW_NON_DEFAULT_DB), false));
-        showTemplates.setSelection(CommonUtils.getBoolean(connectionInfo.getProviderProperty(PostgreConstants.PROP_SHOW_TEMPLATES_DB), false));
-        showTemplates.setEnabled(showNonDefault.getSelection());
-
         activated = true;
     }
 
@@ -267,15 +238,14 @@ public class PostgreConnectionPage extends ConnectionPageAbstract implements ICo
             connectionInfo.setClientHomeId(homesSelector.getSelectedHome());
         }
 
-        connectionInfo.setProviderProperty(PostgreConstants.PROP_SHOW_NON_DEFAULT_DB, String.valueOf(showNonDefault.getSelection()));
-        connectionInfo.setProviderProperty(PostgreConstants.PROP_SHOW_TEMPLATES_DB, String.valueOf(showTemplates.getSelection()));
         super.saveSettings(dataSource);
     }
 
     @Override
-    public IDialogPage[] getSubPages(boolean extrasOnly)
+    public IDialogPage[] getSubPages(boolean extrasOnly, boolean forceCreate)
     {
         return new IDialogPage[] {
+            new PostgreConnectionPageAdvanced(),
             new DriverPropertiesDialogPage(this)
         };
     }

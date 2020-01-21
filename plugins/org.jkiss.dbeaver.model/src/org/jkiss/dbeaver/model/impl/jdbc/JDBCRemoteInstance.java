@@ -33,12 +33,11 @@ import java.util.List;
 /**
  * JDBC data source
  */
-public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DBSInstance
-{
+public class JDBCRemoteInstance implements DBSInstance {
     private static final Log log = Log.getLog(JDBCRemoteInstance.class);
 
     @NotNull
-    protected final DATASOURCE dataSource;
+    protected final JDBCDataSource dataSource;
     @Nullable
     protected JDBCExecutionContext executionContext;
     @Nullable
@@ -46,9 +45,8 @@ public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DB
     @NotNull
     private final List<JDBCExecutionContext> allContexts = new ArrayList<>();
 
-    protected JDBCRemoteInstance(@NotNull DBRProgressMonitor monitor, @NotNull DATASOURCE dataSource, boolean initContext)
-        throws DBException
-    {
+    protected JDBCRemoteInstance(@NotNull DBRProgressMonitor monitor, @NotNull JDBCDataSource dataSource, boolean initContext)
+        throws DBException {
         this.dataSource = dataSource;
         if (initContext) {
             initializeMainContext(monitor);
@@ -62,7 +60,7 @@ public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DB
 
     @NotNull
     @Override
-    public DATASOURCE getDataSource() {
+    public JDBCDataSource getDataSource() {
         return dataSource;
     }
 
@@ -84,21 +82,20 @@ public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DB
 
     protected void initializeMainContext(@NotNull DBRProgressMonitor monitor) throws DBCException {
         if (executionContext == null) {
-            this.executionContext = new JDBCExecutionContext(this, JDBCExecutionContext.TYPE_MAIN);
-            this.executionContext.connect(monitor, null, null, false, true);
+            this.executionContext = dataSource.createExecutionContext(this, getMainContextName());
+            this.executionContext.connect(monitor, null, null, null, true);
         }
     }
 
     public JDBCExecutionContext initializeMetaContext(@NotNull DBRProgressMonitor monitor)
-        throws DBException
-    {
+        throws DBException {
         if (this.metaContext != null) {
             return this.metaContext;
         }
         if (!dataSource.getContainer().getDriver().isEmbedded() && dataSource.getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_SEPARATE_CONNECTION)) {
             synchronized (allContexts) {
-                this.metaContext = new JDBCExecutionContext(this, JDBCExecutionContext.TYPE_METADATA);
-                this.metaContext.connect(monitor, true, null, false, true);
+                this.metaContext = dataSource.createExecutionContext(this, getMetadataContextName());
+                this.metaContext.connect(monitor, true, null, null, true);
                 return this.metaContext;
             }
         } else {
@@ -107,11 +104,20 @@ public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DB
     }
 
     @NotNull
+    protected String getMainContextName() {
+        return JDBCExecutionContext.TYPE_MAIN;
+    }
+
+    @NotNull
+    protected String getMetadataContextName() {
+        return JDBCExecutionContext.TYPE_METADATA;
+    }
+
+    @NotNull
     @Override
-    public DBCExecutionContext openIsolatedContext(@NotNull DBRProgressMonitor monitor, @NotNull String purpose) throws DBException
-    {
-        JDBCExecutionContext context = new JDBCExecutionContext(this, purpose);
-        context.connect(monitor, null, null, true, true);
+    public DBCExecutionContext openIsolatedContext(@NotNull DBRProgressMonitor monitor, @NotNull String purpose, @Nullable DBCExecutionContext initFrom) throws DBException {
+        JDBCExecutionContext context = dataSource.createExecutionContext(this, purpose);
+        context.connect(monitor, null, null, (JDBCExecutionContext) initFrom, true);
         return context;
     }
 
@@ -123,9 +129,15 @@ public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DB
         }
     }
 
+    @NotNull
     @Override
     public JDBCExecutionContext getDefaultContext(DBRProgressMonitor monitor, boolean meta) {
-        if (metaContext != null && meta) {
+        return getDefaultContext(meta);
+    }
+
+    @NotNull
+    public JDBCExecutionContext getDefaultContext(boolean meta) {
+        if (metaContext != null && (meta || executionContext == null)) {
             return this.metaContext;
         }
         if (executionContext == null) {
@@ -142,11 +154,11 @@ public class JDBCRemoteInstance<DATASOURCE extends JDBCDataSource> implements DB
 
     /**
      * Closes all instance contexts
+     *
      * @param monitor  progress monitor
      * @param keepMeta do not close meta context
      */
-    public void shutdown(DBRProgressMonitor monitor, boolean keepMeta)
-    {
+    public void shutdown(DBRProgressMonitor monitor, boolean keepMeta) {
         // [JDBC] Need sync here because real connection close could take some time
         // while UI may invoke callbacks to operate with connection
         List<JDBCExecutionContext> ctxCopy;

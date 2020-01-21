@@ -91,9 +91,9 @@ public class OracleConnectionPage extends ConnectionPageAbstract implements ICom
         addrGroup.setLayout(new GridLayout(1, false));
         addrGroup.setLayoutData(new GridData(GridData.FILL_BOTH));
 
-        final Group protocolGroup = UIUtils.createControlGroup(addrGroup, OracleUIMessages.dialog_connection_connection_type_group, 1, GridData.FILL_HORIZONTAL, 0);
+        UIUtils.createControlLabel(addrGroup, OracleUIMessages.dialog_connection_connection_type_group);
 
-        connectionTypeFolder = new TabFolder(protocolGroup, SWT.TOP | SWT.MULTI);
+        connectionTypeFolder = new TabFolder(addrGroup, SWT.TOP | SWT.MULTI);
         connectionTypeFolder.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 
         createBasicConnectionControls(connectionTypeFolder);
@@ -311,7 +311,7 @@ public class OracleConnectionPage extends ConnectionPageAbstract implements ICom
 
     private void createClientHomeGroup(Composite bottomControls)
     {
-        oraHomeSelector = new ClientHomesSelector(bottomControls, SWT.NONE, OracleUIMessages.dialog_connection_ora_home) {
+        oraHomeSelector = new ClientHomesSelector(bottomControls, OracleUIMessages.dialog_connection_ora_home) {
             @Override
             protected void handleHomeChange()
             {
@@ -498,7 +498,7 @@ public class OracleConnectionPage extends ConnectionPageAbstract implements ICom
     }
 
     @Override
-    public IDialogPage[] getSubPages(boolean extrasOnly)
+    public IDialogPage[] getSubPages(boolean extrasOnly, boolean forceCreate)
     {
         return new IDialogPage[] {
             new OracleConnectionExtraPage(),

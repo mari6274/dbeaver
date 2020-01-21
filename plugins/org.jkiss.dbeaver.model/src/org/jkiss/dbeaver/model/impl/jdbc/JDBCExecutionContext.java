@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.model.impl.jdbc;
 
+import org.eclipse.core.runtime.IAdaptable;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -37,10 +38,11 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Savepoint;
 
 /**
- * JDBCExecutionContext
+ * JDBCExecutionContext.
+ * Implements transaction manager and execution context defaults.
+ * Both depend on datasource implementation.
  */
-public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSource> implements DBCTransactionManager
-{
+public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSource> implements DBCTransactionManager, IAdaptable {
     public static final String TYPE_MAIN = "Main";
     public static final String TYPE_METADATA = "Metadata";
 
@@ -55,8 +57,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
     private volatile Boolean autoCommit;
     private volatile Integer transactionIsolationLevel;
 
-    public JDBCExecutionContext(@NotNull JDBCRemoteInstance instance, String purpose)
-    {
+    public JDBCExecutionContext(@NotNull JDBCRemoteInstance instance, String purpose) {
         super(instance.getDataSource(), purpose);
         this.instance = instance;
     }
@@ -66,18 +67,20 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
         return instance;
     }
 
+    protected void setOwnerInstance(@NotNull JDBCRemoteInstance instance) {
+        this.instance = instance;
+    }
+
     @NotNull
     private Connection getConnection() {
         return connection;
     }
 
-    public void connect(DBRProgressMonitor monitor) throws DBCException
-    {
-        connect(monitor, null, null, false, true);
+    public void connect(DBRProgressMonitor monitor) throws DBCException {
+        connect(monitor, null, null, null, true);
     }
 
-    void connect(@NotNull DBRProgressMonitor monitor, Boolean autoCommit, @Nullable Integer txnLevel, boolean forceActiveObject, boolean addContext) throws DBCException
-    {
+    protected void connect(@NotNull DBRProgressMonitor monitor, Boolean autoCommit, @Nullable Integer txnLevel, JDBCExecutionContext initFrom, boolean addContext) throws DBCException {
         if (connection != null && addContext) {
             log.error("Reopening not-closed connection");
             close();
@@ -127,14 +130,14 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
             try {
                 this.initContextBootstrap(monitor, autoCommit);
             } catch (DBCException e) {
-                log.error("Error while running context bootstrap", e);
+                log.warn("Error while running context bootstrap", e);
             }
 
             try {
-                // Copy context state
-                this.dataSource.initializeContextState(monitor, this, forceActiveObject && !connectionReadOnly);
-            } catch (DBCException e) {
-                log.error("Error while initializing context state", e);
+                // Init (or copy) context state
+                this.dataSource.initializeContextState(monitor, this, initFrom);
+            } catch (DBException e) {
+                log.warn("Error while initializing context state", e);
             }
 
             try {
@@ -158,8 +161,21 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
         }
     }
 
-    public @NotNull Connection getConnection(DBRProgressMonitor monitor) throws SQLException
-    {
+    protected void disconnect() {
+        // [JDBC] Need sync here because real connection close could take some time
+        // while UI may invoke callbacks to operate with connection
+        synchronized (this) {
+            if (this.connection != null) {
+                this.dataSource.closeConnection(connection, purpose);
+            }
+            this.connection = null;
+        }
+        // Notify QM
+        super.closeContext();
+    }
+
+    @NotNull
+    public Connection getConnection(DBRProgressMonitor monitor) throws SQLException {
         if (connection == null) {
             try {
                 connect(monitor);
@@ -176,8 +192,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @NotNull
     @Override
-    public JDBCSession openSession(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionPurpose purpose, @NotNull String taskTitle)
-    {
+    public JDBCSession openSession(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionPurpose purpose, @NotNull String taskTitle) {
         return dataSource.createConnection(monitor, this, purpose, taskTitle);
     }
 
@@ -189,16 +204,14 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
     }
 
     @Override
-    public boolean isConnected()
-    {
+    public boolean isConnected() {
         return connection != null;
     }
 
     @NotNull
     @Override
     public InvalidateResult invalidateContext(@NotNull DBRProgressMonitor monitor, boolean closeOnFailure)
-        throws DBException
-    {
+        throws DBException {
         if (this.connection == null) {
             connect(monitor);
             return InvalidateResult.CONNECTED;
@@ -214,7 +227,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
             if (closeOnFailure) {
                 closeContext(false);
             }
-            connect(monitor, prevAutocommit, txnLevel, true, false);
+            connect(monitor, prevAutocommit, txnLevel, this, false);
 
             return InvalidateResult.RECONNECTED;
         }
@@ -222,22 +235,12 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
     }
 
     @Override
-    public void close()
-    {
+    public void close() {
         closeContext(true);
     }
 
-    private void closeContext(boolean removeContext)
-    {
-        // [JDBC] Need sync here because real connection close could take some time
-        // while UI may invoke callbacks to operate with connection
-        synchronized (this) {
-            if (this.connection != null) {
-                this.dataSource.closeConnection(connection, purpose);
-            }
-            this.connection = null;
-            super.closeContext();
-        }
+    private void closeContext(boolean removeContext) {
+        disconnect();
 
         if (removeContext) {
             // Remove self from context list
@@ -251,8 +254,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public DBPTransactionIsolation getTransactionIsolation()
-        throws DBCException
-    {
+        throws DBCException {
         if (transactionIsolationLevel == null) {
             if (!RuntimeUtils.runTask(monitor -> {
                 try {
@@ -270,8 +272,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public void setTransactionIsolation(@NotNull DBRProgressMonitor monitor, @NotNull DBPTransactionIsolation transactionIsolation)
-        throws DBCException
-    {
+        throws DBCException {
         if (!(transactionIsolation instanceof JDBCTransactionIsolation)) {
             throw new DBCException(ModelMessages.model_jdbc_exception_invalid_transaction_isolation_parameter);
         }
@@ -280,7 +281,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
             getConnection().setTransactionIsolation(jdbcTIL.getCode());
             transactionIsolationLevel = jdbcTIL.getCode();
         } catch (SQLException e) {
-            throw new JDBCException(e, dataSource);
+            throw new JDBCException(e, this);
         } finally {
             QMUtils.getDefaultHandler().handleTransactionIsolation(this, transactionIsolation);
         }
@@ -290,8 +291,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public boolean isAutoCommit()
-        throws DBCException
-    {
+        throws DBCException {
         if (autoCommit == null) {
             // Run in task with timeout
             if (!RuntimeUtils.runTask(monitor -> {
@@ -309,15 +309,13 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public void setAutoCommit(@NotNull DBRProgressMonitor monitor, boolean autoCommit)
-        throws DBCException
-    {
+        throws DBCException {
         monitor.subTask("Set JDBC connection auto-commit " + autoCommit);
         try {
             connection.setAutoCommit(autoCommit);
             this.autoCommit = connection.getAutoCommit();
-        }
-        catch (SQLException e) {
-            throw new JDBCException(e, dataSource);
+        } catch (SQLException e) {
+            throw new JDBCException(e, this);
         } finally {
             QMUtils.getDefaultHandler().handleTransactionAutocommit(this, autoCommit);
         }
@@ -325,8 +323,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public DBCSavepoint setSavepoint(@NotNull DBRProgressMonitor monitor, String name)
-        throws DBCException
-    {
+        throws DBCException {
         Savepoint savepoint;
         try {
             if (name == null) {
@@ -334,20 +331,17 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
             } else {
                 savepoint = getConnection().setSavepoint(name);
             }
-        }
-        catch (SQLException e) {
-            throw new DBCException(e, dataSource);
+        } catch (SQLException e) {
+            throw new DBCException(e, this);
         }
         return new JDBCSavepointImpl(this, savepoint);
     }
 
     @Override
-    public boolean supportsSavepoints()
-    {
+    public boolean supportsSavepoints() {
         try {
             return getConnection().getMetaData().supportsSavepoints();
-        }
-        catch (SQLException e) {
+        } catch (SQLException e) {
             // ignore
             return false;
         }
@@ -355,33 +349,28 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public void releaseSavepoint(@NotNull DBRProgressMonitor monitor, @NotNull DBCSavepoint savepoint)
-        throws DBCException
-    {
+        throws DBCException {
         try {
             if (savepoint instanceof JDBCSavepointImpl) {
                 getConnection().releaseSavepoint(((JDBCSavepointImpl) savepoint).getOriginal());
-            }  else if (savepoint instanceof Savepoint) {
+            } else if (savepoint instanceof Savepoint) {
                 getConnection().releaseSavepoint((Savepoint) savepoint);
             } else {
                 throw new SQLFeatureNotSupportedException(ModelMessages.model_jdbc_exception_bad_savepoint_object);
             }
-        }
-        catch (SQLException e) {
-            throw new JDBCException(e, dataSource);
+        } catch (SQLException e) {
+            throw new JDBCException(e, this);
         }
     }
 
     @Override
     public void commit(@NotNull DBCSession session)
-        throws DBCException
-    {
+        throws DBCException {
         try {
             getConnection().commit();
-        }
-        catch (SQLException e) {
-            throw new JDBCException(e, dataSource);
-        }
-        finally {
+        } catch (SQLException e) {
+            throw new JDBCException(e, this);
+        } finally {
             if (session.isLoggingEnabled()) {
                 QMUtils.getDefaultHandler().handleTransactionCommit(this);
             }
@@ -390,8 +379,7 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
 
     @Override
     public void rollback(@NotNull DBCSession session, DBCSavepoint savepoint)
-        throws DBCException
-    {
+        throws DBCException {
         try {
             if (savepoint != null) {
                 if (savepoint instanceof JDBCSavepointImpl) {
@@ -404,11 +392,9 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
             } else {
                 getConnection().rollback();
             }
-        }
-        catch (SQLException e) {
-            throw new JDBCException(e, dataSource);
-        }
-        finally {
+        } catch (SQLException e) {
+            throw new JDBCException(e, this);
+        } finally {
             if (session.isLoggingEnabled()) {
                 QMUtils.getDefaultHandler().handleTransactionRollback(this, savepoint);
             }
@@ -416,13 +402,21 @@ public class JDBCExecutionContext extends AbstractExecutionContext<JDBCDataSourc
     }
 
     @Override
-    public boolean isEnabled() {
+    public boolean isSupportsTransactions() {
         return instance.getDataSource().getInfo().supportsTransactions();
     }
 
     public void reconnect(DBRProgressMonitor monitor) throws DBCException {
         close();
-        connect(monitor, null, null, false, true);
+        connect(monitor, null, null, this, true);
+    }
+
+    @Override
+    public <T> T getAdapter(Class<T> adapter) {
+        if (adapter == DBCTransactionManager.class) {
+            return adapter.cast(this);
+        }
+        return null;
     }
 
     @Override

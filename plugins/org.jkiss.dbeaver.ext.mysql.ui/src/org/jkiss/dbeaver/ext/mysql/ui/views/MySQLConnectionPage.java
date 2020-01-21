@@ -148,9 +148,8 @@ public class MySQLConnectionPage extends ConnectionPageAbstract implements IComp
             serverTimezoneCombo.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
         }
 
-        homesSelector = new ClientHomesSelector(addrGroup, SWT.NONE, MySQLUIMessages.dialog_connection_local_client);
+        homesSelector = new ClientHomesSelector(addrGroup, MySQLUIMessages.dialog_connection_local_client, false);
         gd = new GridData(GridData.FILL_HORIZONTAL | GridData.HORIZONTAL_ALIGN_BEGINNING);
-        gd.horizontalSpan = 2;
         homesSelector.getPanel().setLayoutData(gd);
 
         createDriverPanel(addrGroup);
@@ -260,7 +259,7 @@ public class MySQLConnectionPage extends ConnectionPageAbstract implements IComp
     }
 
     @Override
-    public IDialogPage[] getSubPages(boolean extrasOnly)
+    public IDialogPage[] getSubPages(boolean extrasOnly, boolean forceCreate)
     {
         return new IDialogPage[] {
             new DriverPropertiesDialogPage(this),

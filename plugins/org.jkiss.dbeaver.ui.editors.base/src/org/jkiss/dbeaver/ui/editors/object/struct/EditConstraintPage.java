@@ -28,7 +28,6 @@ import org.eclipse.swt.widgets.*;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.impl.DBObjectNameCaseTransformer;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
-import org.jkiss.dbeaver.model.sql.SQLDataSource;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.virtual.DBVEntityConstraint;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
@@ -59,8 +58,9 @@ public class EditConstraintPage extends AttributesSelectorPage {
     private Map<DBSEntityConstraintType, String> TYPE_PREFIX = new HashMap<>();
     private Group expressionGroup;
     private Text expressionText;
-    private Boolean enableConstraint = true;
-    private Boolean showEnable = false;
+    private boolean enableConstraint = true;
+    private boolean showEnable = false;
+    private boolean useAllColumns = false;
 
     public EditConstraintPage(
         String title,
@@ -97,11 +97,19 @@ public class EditConstraintPage extends AttributesSelectorPage {
         } catch (DBException e) {
             DBWorkbench.getPlatformUI().showError("Can't get attributes", "Error obtaining entity attributes", e);
         }
+        this.constraintName = this.constraint.getName();
+        if (constraint instanceof DBVEntityConstraint) {
+            this.useAllColumns = ((DBVEntityConstraint) constraint).isUseAllColumns();
+        }
+    }
+
+    private boolean isUniqueVirtualKeyEdit() {
+        return this.constraintTypes.length == 1 && this.constraintTypes[0] == DBSEntityConstraintType.VIRTUAL_KEY;
     }
 
     private void addTypePrefix(DBSEntityConstraintType type, String prefix) {
-        if (entity.getDataSource() instanceof SQLDataSource) {
-            prefix = ((SQLDataSource) entity.getDataSource()).getSQLDialect().storesUnquotedCase().transform(prefix);
+        if (entity.getDataSource() != null) {
+            prefix = entity.getDataSource().getSQLDialect().storesUnquotedCase().transform(prefix);
         }
         TYPE_PREFIX.put(type, prefix);
     }
@@ -132,11 +140,13 @@ public class EditConstraintPage extends AttributesSelectorPage {
             addTypePrefix(DBSEntityConstraintType.FOREIGN_KEY, "_FK");
             addTypePrefix(DBSEntityConstraintType.CHECK, "_CHECK");
 
-            String namePrefix = TYPE_PREFIX.get(constraintTypes[0]);
-            if (namePrefix == null) {
-                namePrefix = "KEY";
+            if (CommonUtils.isEmpty(this.constraintName)) {
+                String namePrefix = TYPE_PREFIX.get(constraintTypes[0]);
+                if (namePrefix == null) {
+                    namePrefix = "KEY";
+                }
+                this.constraintName = DBObjectNameCaseTransformer.transformName(entity.getDataSource(), CommonUtils.escapeIdentifier(entity.getName()) + namePrefix);
             }
-            this.constraintName = DBObjectNameCaseTransformer.transformName(entity.getDataSource(), CommonUtils.escapeIdentifier(entity.getName()) + namePrefix);
         }
 
         final Text nameText = entity != null ? UIUtils.createLabelText(panel, EditorsMessages.dialog_struct_edit_constrain_label_name, constraintName) : null;
@@ -178,13 +188,24 @@ public class EditConstraintPage extends AttributesSelectorPage {
             }
         });
 
-        {
+        if (showEnable) {
             final Button enableConstraintButton = UIUtils.createCheckbox(panel, "Enable Constraint", "Enable constraint after creation", true, 2);
             enableConstraintButton.setVisible(showEnable);
             enableConstraintButton.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
                     enableConstraint = enableConstraintButton.getSelection();
+                }
+            });
+        }
+
+        if (isUniqueVirtualKeyEdit()) {
+            final Button useAllColumnsCheck = UIUtils.createCheckbox(panel, "Use All columns", "Include all table columns in unique key", useAllColumns, 2);
+            useAllColumnsCheck.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    useAllColumns = useAllColumnsCheck.getSelection();
+                    columnsTable.setEnabled(!useAllColumns);
                 }
             });
         }
@@ -204,7 +225,7 @@ public class EditConstraintPage extends AttributesSelectorPage {
                 updatePageState();
             }
         });
-
+        columnsTable.setEnabled(!useAllColumns);
     }
 
     public String getConstraintName() {
@@ -250,4 +271,7 @@ public class EditConstraintPage extends AttributesSelectorPage {
     	return this.enableConstraint;
     }
 
+    public boolean isUseAllColumns() {
+        return this.useAllColumns;
+    }
 }

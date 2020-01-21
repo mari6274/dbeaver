@@ -37,6 +37,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
+import org.jkiss.dbeaver.model.data.DBDContent;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.gis.*;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
@@ -57,6 +58,7 @@ import org.jkiss.dbeaver.ui.gis.GeometryDataUtils;
 import org.jkiss.dbeaver.ui.gis.GeometryViewerConstants;
 import org.jkiss.dbeaver.ui.gis.IGeometryValueEditor;
 import org.jkiss.dbeaver.ui.gis.internal.GISViewerActivator;
+import org.jkiss.dbeaver.ui.gis.registry.GeometryViewerRegistry;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.ArrayUtils;
@@ -79,7 +81,8 @@ public class GISLeafletViewer implements IGeometryValueEditor {
     private static final String PROP_FLIP_COORDINATES = "gis.flipCoords";
     private static final String PROP_SRID = "gis.srid";
 
-    private static final Gson gson = new GsonBuilder().create();
+    private static final Gson gson = new GsonBuilder()
+            .registerTypeHierarchyAdapter(DBDContent.class, new DBDContentAdapter()).create();
 
     private final IValueController valueController;
     private final Browser browser;
@@ -188,6 +191,15 @@ public class GISLeafletViewer implements IGeometryValueEditor {
         saveAttributeSettings();
     }
 
+    @Override
+    public void refresh() {
+        try {
+            reloadGeometryData(lastValue, true);
+        } catch (DBException e) {
+            DBWorkbench.getPlatformUI().showError("Refresh", "Can't refresh value viewer", e);
+        }
+    }
+
     public void setGeometryData(@Nullable DBGeometry[] values) throws DBException {
         reloadGeometryData(values, false);
     }
@@ -229,6 +241,17 @@ public class GISLeafletViewer implements IGeometryValueEditor {
 
             scriptFile = File.createTempFile("view", "gis.html", tempDir);
         }
+
+        int attributeSrid = GisConstants.SRID_SIMPLE;
+        if (valueController != null && valueController.getValueType() instanceof GisAttribute) {
+            try {
+                attributeSrid = ((GisAttribute) valueController.getValueType())
+                        .getAttributeGeometrySRID(new VoidProgressMonitor());
+            } catch (DBCException e) {
+                log.error(e);
+            }
+        }
+
         List<String> geomValues = new ArrayList<>();
         List<String> geomTipValues = new ArrayList<>();
         boolean showMap = false;
@@ -246,6 +269,9 @@ public class GISLeafletViewer implements IGeometryValueEditor {
             }
             Object targetValue = value.getRawValue();
             int srid = sourceSRID == 0 ? value.getSRID() : sourceSRID;
+            if (srid == GisConstants.SRID_SIMPLE) {
+                srid = attributeSrid;
+            }
             if (srid == GisConstants.SRID_SIMPLE) {
                 showMap = false;
                 actualSourceSRID = srid;
@@ -282,15 +308,6 @@ public class GISLeafletViewer implements IGeometryValueEditor {
                 geomTipValues.add(gson.toJson(value.getProperties()));
             }
         }
-        if (actualSourceSRID == GisConstants.SRID_SIMPLE) {
-            if (valueController != null && valueController.getValueType() instanceof GisAttribute) {
-                try {
-                    actualSourceSRID = ((GisAttribute) valueController.getValueType()).getAttributeGeometrySRID(new VoidProgressMonitor());
-                } catch (DBCException e) {
-                    log.error(e);
-                }
-            }
-        }
         this.defaultSRID = actualSourceSRID;
         String geomValuesString = String.join(",", geomValues);
         String geomTipValuesString = String.join(",", geomTipValues);
@@ -317,6 +334,8 @@ public class GISLeafletViewer implements IGeometryValueEditor {
                         return String.valueOf(toolsVisible);
                     case "geomCRS":
                         return geomCRS;
+                    case "defaultTiles":
+                        return GeometryViewerRegistry.getInstance().getDefaultLeafletTiles().getLayersDefinition();
                 }
                 return null;
             });
@@ -459,6 +478,9 @@ public class GISLeafletViewer implements IGeometryValueEditor {
 
         Action crsSelectorAction = new SelectCRSAction(this);
         toolBarManager.add(ActionUtils.makeActionContribution(crsSelectorAction, true));
+
+        Action tilesSelectorAction = new SelectTilesAction(this);
+        toolBarManager.add(ActionUtils.makeActionContribution(tilesSelectorAction, true));
 
         toolBarManager.add(new Action("Flip coordinates", Action.AS_CHECK_BOX) {
             {

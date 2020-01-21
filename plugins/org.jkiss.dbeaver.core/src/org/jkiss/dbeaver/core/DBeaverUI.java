@@ -45,20 +45,20 @@ import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverDependencies;
 import org.jkiss.dbeaver.model.exec.DBExecUtils;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
-import org.jkiss.dbeaver.model.runtime.*;
+import org.jkiss.dbeaver.model.runtime.DBRProcessDescriptor;
+import org.jkiss.dbeaver.model.runtime.DBRProcessListener;
+import org.jkiss.dbeaver.model.runtime.DBRRunnableWithProgress;
+import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.load.ILoadService;
 import org.jkiss.dbeaver.model.runtime.load.ILoadVisualizer;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.DBPPlatformUI;
-import org.jkiss.dbeaver.ui.LoadingJob;
-import org.jkiss.dbeaver.ui.TrayIconHandler;
-import org.jkiss.dbeaver.ui.UITask;
-import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.actions.datasource.DataSourceInvalidateHandler;
 import org.jkiss.dbeaver.ui.dialogs.AcceptLicenseDialog;
+import org.jkiss.dbeaver.ui.dialogs.BaseAuthDialog;
 import org.jkiss.dbeaver.ui.dialogs.StandardErrorDialog;
-import org.jkiss.dbeaver.ui.dialogs.connection.BaseAuthDialog;
 import org.jkiss.dbeaver.ui.dialogs.connection.PasswordChangeDialog;
 import org.jkiss.dbeaver.ui.dialogs.driver.DriverDownloadDialog;
 import org.jkiss.dbeaver.ui.dialogs.driver.DriverEditDialog;
@@ -223,12 +223,14 @@ public class DBeaverUI implements DBPPlatformUI {
     }
 
     @Override
-    public void showMessageBox(String title, String message, boolean error) {
-        UIUtils.showMessageBox(
-            UIUtils.getActiveWorkbenchShell(),
-            title,
-            message,
-            error ? SWT.ICON_ERROR : SWT.ICON_INFORMATION);
+    public void showMessageBox(@NotNull String title, String message, boolean error) {
+        UIUtils.syncExec(() -> {
+            UIUtils.showMessageBox(
+                UIUtils.getActiveWorkbenchShell(),
+                title,
+                message,
+                error ? SWT.ICON_ERROR : SWT.ICON_INFORMATION);
+            });
     }
 
     @Override
@@ -367,7 +369,7 @@ public class DBeaverUI implements DBPPlatformUI {
 
     @Override
     public void executeWithProgress(@NotNull Runnable runnable) {
-        UIUtils.syncExec(runnable);
+        UIExecutionQueue.queueExec(runnable);
     }
 
     @Override

@@ -25,6 +25,7 @@ import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -53,9 +54,9 @@ public class PostgreExtensionManager extends SQLObjectEditor<PostgreExtension, P
 
 
     @Override
-    protected void addObjectCreateActions(DBRProgressMonitor monitor, List<DBEPersistAction> actions,
-            SQLObjectEditor<PostgreExtension, PostgreDatabase>.ObjectCreateCommand command,
-            Map<String, Object> options) {
+    protected void addObjectCreateActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions,
+                                          ObjectCreateCommand command,
+                                          Map<String, Object> options) {
         final PostgreExtension extension = command.getObject();
 
         actions.add(
@@ -66,9 +67,9 @@ public class PostgreExtensionManager extends SQLObjectEditor<PostgreExtension, P
     }
 
     @Override
-    protected void addObjectDeleteActions(List<DBEPersistAction> actions,
-            SQLObjectEditor<PostgreExtension, PostgreDatabase>.ObjectDeleteCommand command,
-            Map<String, Object> options) {
+    protected void addObjectDeleteActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions,
+                                          ObjectDeleteCommand command,
+                                          Map<String, Object> options) {
         
         
         actions.add(

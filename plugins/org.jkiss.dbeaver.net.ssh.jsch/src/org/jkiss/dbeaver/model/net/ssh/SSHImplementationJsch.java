@@ -16,10 +16,7 @@
  */
 package org.jkiss.dbeaver.model.net.ssh;
 
-import java.io.File;
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-
+import com.jcraft.jsch.*;
 import org.eclipse.jsch.ui.UserInfoPrompter;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
@@ -30,13 +27,9 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
-import com.jcraft.jsch.IdentityRepository;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.Logger;
-import com.jcraft.jsch.Session;
-import com.jcraft.jsch.UIKeyboardInteractive;
-import com.jcraft.jsch.UserInfo;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 
 /**
  * SSH tunnel
@@ -45,18 +38,19 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
 
     private static final Log log = Log.getLog(SSHImplementationJsch.class);
 
-    private static transient JSch jsch;
+    private transient JSch jsch;
     private transient volatile Session session;
 
     @Override
     protected void setupTunnel(DBRProgressMonitor monitor, DBWHandlerConfiguration configuration, String sshHost, int aliveInterval, int sshPortNum, File privKeyFile, int connectTimeout, String sshLocalHost, int sshLocalPort, String sshRemoteHost, int sshRemotePort) throws DBException, IOException {
         try {
-            if (jsch == null) {
-                jsch = new JSch();
-                JSch.setLogger(new LoggerProxy());
-            }
+            jsch = new JSch();
+            JSch.setLogger(new LoggerProxy());
 
-            AuthType authType = AuthType.valueOf(configuration.getProperty(SSHConstants.PROP_AUTH_TYPE).toString());
+            String autoTypeString = CommonUtils.toString(configuration.getProperty(SSHConstants.PROP_AUTH_TYPE));
+            AuthType authType = CommonUtils.isEmpty(autoTypeString) ?
+                (privKeyFile == null ? AuthType.PASSWORD : AuthType.PUBLIC_KEY) :
+                CommonUtils.valueOf(AuthType.class, autoTypeString, AuthType.PASSWORD);
 
             if (authType == AuthType.PUBLIC_KEY) {
                 if (!CommonUtils.isEmpty(configuration.getPassword())) {
@@ -75,15 +69,15 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
             session.setConfig("StrictHostKeyChecking", "no");
 
             if (authType == AuthType.PASSWORD) {
-                session.setConfig("PreferredAuthentications", "keyboard-interactive,password");
-                // Use Eclipse standard prompter
-                UserInfoCustom ui = new UserInfoCustom(configuration);
-
-                session.setUserInfo(ui);
+                session.setConfig("PreferredAuthentications", "password,keyboard-interactive");
             } else {
-                session.setConfig("PreferredAuthentications", "publickey, keyboard-interactive");
+                session.setConfig("PreferredAuthentications", "publickey,keyboard-interactive,password");
             }
             session.setConfig("ConnectTimeout", String.valueOf(connectTimeout));
+
+            // Use Eclipse standard prompter
+            UserInfoCustom ui = new UserInfoCustom(configuration);
+            session.setUserInfo(ui);
 
             if (aliveInterval != 0) {
                 session.setServerAliveInterval(aliveInterval);

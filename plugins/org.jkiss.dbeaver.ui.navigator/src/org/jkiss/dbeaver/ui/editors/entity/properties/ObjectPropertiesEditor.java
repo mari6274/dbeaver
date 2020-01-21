@@ -261,8 +261,9 @@ public class ObjectPropertiesEditor extends AbstractDatabaseObjectEditor<DBSObje
             Point sashSize = sashForm.getParent().getSize();
             if (sashSize.x <= 0 || sashSize.y <= 0) {
                 // This may happen if EntityEditor created with some other active editor (i.e. props editor not visible)
+                propsSize.y += 10;
                 sashSize = getParentSize(sashForm);
-                sashSize.y += 20;
+                //sashSize.y += 20;
             }
             if (sashSize.x > 0 && sashSize.y > 0) {
                 float ratio = (float) propsSize.y / (float) sashSize.y;
@@ -654,6 +655,11 @@ public class ObjectPropertiesEditor extends AbstractDatabaseObjectEditor<DBSObje
     @Override
     public boolean isEntityContainer(DBSObjectContainer object) {
         return false;
+    }
+
+    @Override
+    public boolean isRelationalObject(DBSObject object) {
+        return true;
     }
 
     @Override

@@ -19,11 +19,8 @@
   -->
 
 <plugin>
-    <extension-point id="org.jkiss.dbeaver.pluginService" name="%extension-point.org.jkiss.dbeaver.pluginService.name" schema="schema/org.jkiss.dbeaver.pluginService.exsd"/>
-
     <!-- UI extensions -->
     <extension-point id="org.jkiss.dbeaver.objectManager" name="%extension-point.org.jkiss.dbeaver.objectManager.name" schema="schema/org.jkiss.dbeaver.objectManager.exsd"/>
-    <extension-point id="org.jkiss.dbeaver.tools" name="%extension-point.org.jkiss.dbeaver.tools.name" schema="schema/org.jkiss.dbeaver.tools.exsd"/>
     <extension-point id="org.jkiss.dbeaver.workbenchHandler" name="%extension-point.org.jkiss.dbeaver.workbenchHandler.name" schema="schema/org.jkiss.dbeaver.workbenchHandler.exsd"/>
 
     <extension point="org.eclipse.core.contenttype.contentTypes">
@@ -48,12 +45,6 @@
             namespace="org.jkiss.dbeaver.core.object"
             properties="canOpen,canCreate,canPaste,canDelete,canRename,canMoveUp,canMoveDown,canFilter,canFilterObject,hasFilter"
             type="org.jkiss.dbeaver.model.navigator.DBNNode"/>
-        <propertyTester
-            class="org.jkiss.dbeaver.ui.actions.ToolsPropertyTester"
-            id="org.jkiss.dbeaver.ui.actions.ToolsPropertyTester"
-            namespace="org.jkiss.dbeaver.core.tools"
-            properties="hasTools"
-            type="org.eclipse.ui.IWorkbenchPart"/>
         <propertyTester
             class="org.jkiss.dbeaver.ui.actions.UIPropertyTester"
             id="org.jkiss.dbeaver.ui.actions.UIPropertyTester"
@@ -524,10 +515,6 @@
                 </command>
                 <separator name="transactions" visible="false"/>
                 <separator name="tools" visible="true"/>
-                <menu label="%menu.database.tools" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/misc/tools.png">
-                    <dynamic id="org.jkiss.dbeaver.core.menu.tools" class="org.jkiss.dbeaver.ui.actions.datasource.DataSourceToolsContributor"/>
-                </menu>
-                <command commandId="org.jkiss.dbeaver.ui.tools.menu"/>
                 <command commandId="org.jkiss.dbeaver.core.migrate.connection">
                     <visibleWhen checkEnabled="true"/>
                 </command>
@@ -795,33 +782,6 @@
             </command>
         </menuContribution>
 
-        <!-- Tools context menu -->
-
-        <menuContribution allPopups="false" locationURI="popup:org.eclipse.ui.popup.any?after=tools">
-            <command commandId="org.jkiss.dbeaver.core.procedure.execute">
-                <visibleWhen checkEnabled="true"/>
-            </command>
-            <!--<command commandId="org.jkiss.dbeaver.ui.editors.data.forSelection">
-                <visibleWhen checkEnabled="true"/>
-            </command>-->
-            <command commandId="org.jkiss.dbeaver.core.sql.editor.forSelection">
-                <visibleWhen checkEnabled="true"/>
-            </command>
-
-            <separator name="compare" visible="false"/>
-            <separator name="export_import" visible="false"/>
-            <separator name="generate" visible="false"/>
-
-            <menu label="%menu.database.tools" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/misc/tools.png">
-                <visibleWhen>
-                    <with variable="activePart">
-                        <test property="org.jkiss.dbeaver.core.tools.hasTools"/>
-                    </with>
-                </visibleWhen>
-                <dynamic id="org.jkiss.dbeaver.core.menu.tools" class="org.jkiss.dbeaver.ui.actions.datasource.DataSourceToolsContributor"/>
-            </menu>
-        </menuContribution>
-
         <menuContribution allPopups="false" locationURI="menu:org.eclipse.ui.main.menu?after=additions">
             <menu id="navigate" label="%menu.navigate">
                 <command commandId="org.jkiss.dbeaver.core.object.goto"><visibleWhen checkEnabled="true"/></command>
@@ -1026,24 +986,6 @@
             </enabledWhen>
         </page>
 
-        <page category="org.jkiss.dbeaver.preferences.editors" class="org.jkiss.dbeaver.ui.editors.sql.preferences.PrefPageSQLEditor" id="org.jkiss.dbeaver.preferences.main.sqleditor" name="%page.org.jkiss.dbeaver.preferences.main.sqleditor.name">
-            <enabledWhen><reference definitionId="org.jkiss.dbeaver.core.preferences.datasource"/></enabledWhen>
-        </page>
-        <page category="org.jkiss.dbeaver.preferences.main.sqleditor" id="org.jkiss.dbeaver.preferences.main.sql.completion" class="org.jkiss.dbeaver.ui.editors.sql.preferences.PrefPageSQLCompletion" name="%page.org.jkiss.dbeaver.preferences.main.sql.completion.name">
-            <enabledWhen><reference definitionId="org.jkiss.dbeaver.core.preferences.datasource"/></enabledWhen>
-        </page>
-        <page category="org.jkiss.dbeaver.preferences.main.sqleditor" id="org.jkiss.dbeaver.preferences.main.sql.resources" class="org.jkiss.dbeaver.ui.editors.sql.preferences.PrefPageSQLResources" name="%page.org.jkiss.dbeaver.preferences.main.sql.resources.name">
-            <enabledWhen><reference definitionId="org.jkiss.dbeaver.core.preferences.datasource"/></enabledWhen>
-        </page>
-        <page category="org.jkiss.dbeaver.preferences.main.sqleditor" id="org.jkiss.dbeaver.preferences.main.sql.format" class="org.jkiss.dbeaver.ui.editors.sql.preferences.PrefPageSQLFormat" name="%page.org.jkiss.dbeaver.preferences.main.sql.format.name">
-            <enabledWhen><reference definitionId="org.jkiss.dbeaver.core.preferences.datasource"/></enabledWhen>
-        </page>
-        <page category="org.jkiss.dbeaver.preferences.main.sqleditor" id="org.jkiss.dbeaver.preferences.main.sqlexecute" class="org.jkiss.dbeaver.ui.editors.sql.preferences.PrefPageSQLExecute" name="%page.org.jkiss.dbeaver.preferences.main.sqlexecute.name">
-            <enabledWhen><reference definitionId="org.jkiss.dbeaver.core.preferences.datasource"/></enabledWhen>
-        </page>
-        <page category="org.jkiss.dbeaver.preferences.main.sqleditor" class="org.jkiss.dbeaver.ui.editors.sql.preferences.PrefPageSQLTemplates" id="org.jkiss.dbeaver.preferences.main.sql.templates" name="%page.org.jkiss.dbeaver.preferences.main.sql.templates.name">
-            <enabledWhen><reference definitionId="org.jkiss.dbeaver.core.preferences.datasource"/></enabledWhen>
-        </page>
         <page class="org.jkiss.dbeaver.ui.preferences.PrefPageQueryManager" id="org.jkiss.dbeaver.preferences.main.qm" name="%page.org.jkiss.dbeaver.preferences.main.qm.name">
            <enabledWhen>
               <instanceof value="org.jkiss.dbeaver.ui.views.qm.QueryManagerView"/>
@@ -1187,6 +1129,7 @@
         <keyword id="org.jkiss.dbeaver.core.keyword.pref.db.dataformat" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.db.dataformat.label"/>
         <keyword id="org.jkiss.dbeaver.core.keyword.pref.db.qm" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.db.qm.label"/>
         <keyword id="org.jkiss.dbeaver.core.keyword.pref.editor.binary" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.editor.binary.label"/>
+        <keyword id="org.jkiss.dbeaver.core.keyword.pref.editor.data" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.editor.data.label"/>
         <keyword id="org.jkiss.dbeaver.core.keyword.pref.editor.content" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.editor.content.label"/>
         <keyword id="org.jkiss.dbeaver.core.keyword.pref.editor.erd" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.editor.erd.label"/>
         <keyword id="org.jkiss.dbeaver.core.keyword.pref.editor.sql" label="%keyword.org.jkiss.dbeaver.core.keyword.pref.editor.sql.label"/>

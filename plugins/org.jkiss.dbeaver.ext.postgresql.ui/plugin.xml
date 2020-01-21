@@ -226,7 +226,7 @@
                     singleton="false">
                 <objectType name="org.jkiss.dbeaver.ext.postgresql.model.PostgreTrigger" if="object.enabledState != 'D'"/>
             </tool>            
-            <tool
+            <!--<tool
                     class="org.jkiss.dbeaver.ext.postgresql.tools.maintenance.PostgreToolExtensionUninstall"
                     description="Uninstall extension"
                     id="org.jkiss.dbeaver.ext.postgresql.tools.maintenance.PostgreToolExtensionUninstall"
@@ -234,7 +234,7 @@
                     label="Uninstall"
                     singleton="false">
                     <objectType name="org.jkiss.dbeaver.ext.postgresql.model.PostgreAvailableExtension" if="object.isInstalled()"/>
-            </tool>
+            </tool>-->
               <tool
                     class="org.jkiss.dbeaver.ext.postgresql.tools.maintenance.PostgreToolTriggerEnable"
                     description="Enable trigger"
@@ -271,10 +271,16 @@
         </tools>
     </extension>
 
-    <extension point="org.eclipse.core.runtime.adapters">
-        <factory adaptableType="org.jkiss.dbeaver.ext.postgresql.model.PostgreDialect" class="org.jkiss.dbeaver.ext.postgresql.ui.sql.PostgreDialectAdapterFactory">
-            <adapter type="org.jkiss.dbeaver.runtime.sql.SQLRuleProvider"/>
-        </factory>
+    <extension point="org.jkiss.dbeaver.task">
+        <configurator type="pgDatabaseBackup" class="org.jkiss.dbeaver.ext.postgresql.tools.PostgreTaskConfigurator"/>
+        <configurator type="pgDatabaseRestore" class="org.jkiss.dbeaver.ext.postgresql.tools.PostgreTaskConfigurator"/>
+        <configurator type="pgScriptExecute" class="org.jkiss.dbeaver.ext.postgresql.tools.PostgreTaskConfigurator"/>
+    </extension>
+
+    <extension point="org.eclipse.ui.preferencePages">
+        <page category="org.jkiss.dbeaver.preferences.drivers" id="org.jkiss.dbeaver.preferences.postgresql.general" class="org.jkiss.dbeaver.ext.postgresql.ui.PrefPagePostgreSQL" name="PostgreSQL">
+            <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
+        </page>
     </extension>
 
 </plugin>

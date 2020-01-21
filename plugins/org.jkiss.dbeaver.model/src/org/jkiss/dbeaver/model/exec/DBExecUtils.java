@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.model.exec;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
@@ -35,6 +36,12 @@ import org.jkiss.dbeaver.model.net.DBWNetworkHandler;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableParametrized;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
+import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLUtils;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
+import org.jkiss.dbeaver.model.struct.rdb.DBSCatalog;
+import org.jkiss.dbeaver.model.struct.rdb.DBSSchema;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.jobs.InvalidateJob;
 import org.jkiss.dbeaver.runtime.net.GlobalProxyAuthenticator;
@@ -163,7 +170,6 @@ public class DBExecUtils {
                     // Some other error
                     break;
                 }
-                log.debug("Invalidate datasource '" + dataSource.getContainer().getName() + "' connections...");
                 DBRProgressMonitor monitor;
                 if (param instanceof DBRProgressMonitor) {
                     monitor = (DBRProgressMonitor) param;
@@ -176,10 +182,24 @@ public class DBExecUtils {
 
                     if (errorType == DBPErrorAssistant.ErrorType.TRANSACTION_ABORTED) {
                         // Transaction aborted
-                        InvalidateJob.invalidateTransaction(monitor, dataSource);
+                        DBCExecutionContext executionContext = null;
+                        if (lastError instanceof DBCException) {
+                            executionContext = ((DBCException) lastError).getExecutionContext();
+                        }
+                        if (executionContext != null) {
+                            log.debug("Invalidate context [" + executionContext.getDataSource().getContainer().getName() + "/" + executionContext.getContextName() + "] transactions");
+                        } else {
+                            log.debug("Invalidate datasource [" + dataSource.getContainer().getName() + "] transactions");
+                        }
+                        InvalidateJob.invalidateTransaction(monitor, dataSource, executionContext);
                     } else {
                         // Do not recover if connection was canceled
-                        InvalidateJob.invalidateDataSource(monitor, dataSource, false,
+                        log.debug("Invalidate datasource '" + dataSource.getContainer().getName() + "' connections...");
+                        InvalidateJob.invalidateDataSource(
+                            monitor,
+                            dataSource,
+                            false,
+                            true,
                             () -> DBWorkbench.getPlatformUI().openConnectionEditor(dataSource.getContainer()));
                         if (i < tryCount - 1) {
                             log.error("Operation failed. Retry count remains = " + (tryCount - i - 1), lastError);
@@ -267,4 +287,83 @@ public class DBExecUtils {
         }
     }
 
+    public static void checkSmartAutoCommit(DBCSession session, String queryText) {
+        DBCTransactionManager txnManager = DBUtils.getTransactionManager(session.getExecutionContext());
+        if (txnManager != null) {
+            try {
+                if (!txnManager.isAutoCommit()) {
+                    return;
+                }
+
+                SQLDialect sqlDialect = SQLUtils.getDialectFromDataSource(session.getDataSource());
+                if (!sqlDialect.isTransactionModifyingQuery(queryText)) {
+                    return;
+                }
+
+                if (txnManager.isAutoCommit()) {
+                    txnManager.setAutoCommit(session.getProgressMonitor(), false);
+                }
+            } catch (DBCException e) {
+                log.warn(e);
+            }
+        }
+    }
+
+    public static void setExecutionContextDefaults(DBRProgressMonitor monitor, DBPDataSource dataSource, DBCExecutionContext executionContext, @Nullable String newInstanceName, @Nullable String curInstanceName, @Nullable String newObjectName) throws DBException {
+        DBSObjectContainer rootContainer = DBUtils.getAdapter(DBSObjectContainer.class, dataSource);
+        if (rootContainer == null) {
+            return;
+        }
+
+        DBCExecutionContextDefaults contextDefaults = null;
+        if (executionContext != null) {
+            contextDefaults = executionContext.getContextDefaults();
+        }
+        if (contextDefaults != null && (contextDefaults.supportsSchemaChange() || contextDefaults.supportsCatalogChange())) {
+            changeDefaultObject(monitor, rootContainer, contextDefaults, newInstanceName, curInstanceName, newObjectName);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static void changeDefaultObject(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBSObjectContainer rootContainer,
+        @NotNull DBCExecutionContextDefaults contextDefaults,
+        @Nullable String newCatalogName,
+        @Nullable String curCatalogName,
+        @Nullable String newObjectName) throws DBException
+    {
+        DBSCatalog newCatalog = null;
+        DBSSchema newSchema = null;
+
+        if (newCatalogName != null) {
+            DBSObject newInstance = rootContainer.getChild(monitor, newCatalogName);
+            if (newInstance instanceof DBSCatalog) {
+                newCatalog = (DBSCatalog) newInstance;
+            }
+        }
+        DBSObject newObject;
+        if (newObjectName != null) {
+            if (newCatalog == null) {
+                newObject = rootContainer.getChild(monitor, newObjectName);
+            } else {
+                newObject = newCatalog.getChild(monitor, newObjectName);
+            }
+            if (newObject instanceof DBSSchema) {
+                newSchema = (DBSSchema) newObject;
+            } else if (newObject instanceof DBSCatalog) {
+                newCatalog = (DBSCatalog) newObject;
+            }
+        }
+
+        boolean changeCatalog = (curCatalogName != null ? !CommonUtils.equalObjects(curCatalogName, newCatalogName) : newCatalog != null);
+
+        if (newCatalog != null && newSchema != null && changeCatalog) {
+            contextDefaults.setDefaultCatalog(monitor, newCatalog, newSchema);
+        } else if (newSchema != null) {
+            contextDefaults.setDefaultSchema(monitor, newSchema);
+        } else if (newCatalog != null && changeCatalog) {
+            contextDefaults.setDefaultCatalog(monitor, newCatalog, null);
+        }
+    }
 }

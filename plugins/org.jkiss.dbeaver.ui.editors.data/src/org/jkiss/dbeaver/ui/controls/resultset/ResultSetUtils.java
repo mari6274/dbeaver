@@ -27,6 +27,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.*;
@@ -53,6 +54,8 @@ import java.util.*;
 public class ResultSetUtils
 {
     private static final Log log = Log.getLog(ResultSetUtils.class);
+
+    private static final boolean BROWSE_LAZY_ASSOCIATIONS = false;
 
     private static volatile IDialogSettings viewerSettings;
 
@@ -107,7 +110,7 @@ public class ResultSetUtils
                             entityMeta = sqlQuery.getSingleSource();
                         }
                         if (entityMeta != null) {
-                            entity = DBUtils.getEntityFromMetaData(monitor, dataSource, entityMeta);
+                            entity = DBUtils.getEntityFromMetaData(monitor, session.getExecutionContext(), entityMeta);
                             if (entity != null) {
                                 entityBindingMap.put(entityMeta, entity);
                             }
@@ -138,7 +141,7 @@ public class ResultSetUtils
                             // MySQL returns source table name instead of view name. That's crazy.
                             attrEntity = entity;
                         } else {
-                            attrEntity = DBUtils.getEntityFromMetaData(monitor, dataSource, attrEntityMeta);
+                            attrEntity = DBUtils.getEntityFromMetaData(monitor, session.getExecutionContext(), attrEntityMeta);
                         }
                     }
                     if (attrEntity != null) {
@@ -495,7 +498,7 @@ public class ResultSetUtils
 
     public static DBSEntity getAssociatedEntity(DBSEntityConstraint constraint) {
         DBSEntity[] associatedEntity = new DBSEntity[1];
-        if (constraint instanceof DBSEntityAssociationLazy) {
+        if (BROWSE_LAZY_ASSOCIATIONS && constraint instanceof DBSEntityAssociationLazy) {
             try {
                 UIUtils.runInProgressService(monitor -> {
                     try {
@@ -515,4 +518,7 @@ public class ResultSetUtils
         return associatedEntity[0];
     }
 
+    static String formatRowCount(long rows) {
+        return rows < 0 ? DBConstants.LABEL_NA : String.valueOf(rows);
+    }
 }

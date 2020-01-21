@@ -138,14 +138,14 @@ public class PostgreDebugSession extends DBGJDBCSession {
                 PostgreProcedure function = PostgreSqlDebugCore.resolveFunction(monitor, controller.getDataSourceContainer(), controller.getDebugConfiguration());
                 instance = function.getDatabase();
             }
-            this.controllerConnection = (JDBCExecutionContext) instance.openIsolatedContext(monitor, "Debug controller session");
+            this.controllerConnection = (JDBCExecutionContext) instance.openIsolatedContext(monitor, "Debug controller session", null);
 
             log.debug("Debug controller session created.");
             JDBCDataSource src = this.controllerConnection.getDataSource();
             if (src instanceof PostgreDataSource) {
                 PostgreDataSource pgSrc = (PostgreDataSource) src;
-                log.debug(String.format("Active user %s", instance.getActiveUser()));
-                log.debug(String.format("Active schema %s", instance.getActiveSchemaName()));
+                log.debug(String.format("Active user %s", instance.getDefaultContext().getActiveUser()));
+                log.debug(String.format("Active schema %s", instance.getDefaultContext().getDefaultSchema()));
                 if (pgSrc.getInfo() instanceof JDBCDataSourceInfo) {
                     JDBCDataSourceInfo JDBCinfo = (JDBCDataSourceInfo) pgSrc.getInfo();
                     log.debug("------------DATABASE DRIVER INFO---------------");
@@ -381,7 +381,7 @@ public class PostgreDebugSession extends DBGJDBCSession {
     private void attachLocal(DBRProgressMonitor monitor, PostgreProcedure function, List<String> parameters) throws DBGException {
 
         try {
-            JDBCExecutionContext connection = (JDBCExecutionContext) controllerConnection.getOwnerInstance().openIsolatedContext(monitor, "Debug process session");
+            JDBCExecutionContext connection = (JDBCExecutionContext) controllerConnection.getOwnerInstance().openIsolatedContext(monitor, "Debug process session", null);
             log.debug("Attaching locally....");
             this.sessionInfo = getSessionDescriptor(monitor, connection);
 

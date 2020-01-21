@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.ext.oracle.model.source.OracleStatefulObject;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.exec.DBCException;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
@@ -198,16 +199,21 @@ public class OracleUtils {
         }
     }
 
-    public static void addSchemaChangeActions(List<DBEPersistAction> actions, OracleSourceObject object)
+    public static void addSchemaChangeActions(DBCExecutionContext executionContext, List<DBEPersistAction> actions, OracleSourceObject object)
     {
+        OracleSchema schema = object.getSchema();
+        if (schema == null) {
+            return;
+        }
         actions.add(0, new SQLDatabasePersistAction(
             "Set target schema",
-            "ALTER SESSION SET CURRENT_SCHEMA=" + object.getSchema().getName(),
+            "ALTER SESSION SET CURRENT_SCHEMA=" + schema.getName(),
             DBEPersistAction.ActionType.INITIALIZER));
-        if (object.getSchema() != object.getDataSource().getDefaultObject()) {
+        OracleSchema defaultSchema = ((OracleExecutionContext)executionContext).getDefaultSchema();
+        if (schema != defaultSchema && defaultSchema != null) {
             actions.add(new SQLDatabasePersistAction(
                 "Set current schema",
-                "ALTER SESSION SET CURRENT_SCHEMA=" + object.getDataSource().getDefaultObject().getName(),
+                "ALTER SESSION SET CURRENT_SCHEMA=" + defaultSchema.getName(),
                 DBEPersistAction.ActionType.FINALIZER));
         }
     }
@@ -271,9 +277,9 @@ public class OracleUtils {
                         return source.toString();
                     }
                 }
+            } catch (SQLException e) {
+                throw new DBCException(e, session.getExecutionContext());
             }
-        } catch (SQLException e) {
-            throw new DBCException(e, sourceOwner.getDataSource());
         } finally {
             monitor.done();
         }
@@ -356,9 +362,9 @@ public class OracleUtils {
                         return false;
                     }
                 }
+            } catch (SQLException e) {
+                throw new DBCException(e, session.getExecutionContext());
             }
-        } catch (SQLException e) {
-            throw new DBCException(e, object.getDataSource());
         }
     }
 

@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.model.impl;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.connection.DBPConnectionBootstrap;
@@ -71,6 +72,16 @@ public abstract class AbstractExecutionContext<DATASOURCE extends DBPDataSource>
         return dataSource;
     }
 
+    @Nullable
+    @Override
+    public DBCExecutionContextDefaults getContextDefaults() {
+        return null;
+    }
+
+    @NotNull
+    protected DBPConnectionBootstrap getBootstrapSettings() {
+        return getDataSource().getContainer().getActualConnectionConfiguration().getBootstrap();
+    }
 
     /**
      * Context boot procedure.
@@ -83,7 +94,7 @@ public abstract class AbstractExecutionContext<DATASOURCE extends DBPDataSource>
         QMUtils.getDefaultHandler().handleContextOpen(this, !autoCommit);
 
         // Execute bootstrap queries
-        DBPConnectionBootstrap bootstrap = dataSource.getContainer().getConnectionConfiguration().getBootstrap();
+        DBPConnectionBootstrap bootstrap = getBootstrapSettings();
         List<String> initQueries = bootstrap.getInitQueries();
         if (!CommonUtils.isEmpty(initQueries)) {
             monitor.subTask("Run bootstrap queries");
@@ -100,7 +111,7 @@ public abstract class AbstractExecutionContext<DATASOURCE extends DBPDataSource>
                         if (bootstrap.isIgnoreErrors()) {
                             log.warn(message);
                         } else {
-                            throw new DBCException(message, e, dataSource);
+                            throw new DBCException(message, e, this);
                         }
                     }
                 }

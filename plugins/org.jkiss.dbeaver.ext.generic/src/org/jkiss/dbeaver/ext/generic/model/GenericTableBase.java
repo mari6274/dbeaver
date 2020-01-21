@@ -44,6 +44,7 @@ import org.jkiss.utils.CommonUtils;
 
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.util.*;
 
 /**
@@ -168,19 +169,19 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
     @Nullable
     @Override
-    public List<GenericPrimaryKey> getConstraints(@NotNull DBRProgressMonitor monitor)
+    public List<GenericUniqueKey> getConstraints(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         if (getDataSource().getInfo().supportsReferentialIntegrity() || getDataSource().getInfo().supportsIndexes()) {
             // ensure all columns are already cached
             getAttributes(monitor);
-            return getContainer().getPrimaryKeysCache().getObjects(monitor, getContainer(), this);
+            return getContainer().getConstraintKeysCache().getObjects(monitor, getContainer(), this);
         }
         return null;
     }
 
-    void addUniqueKey(GenericPrimaryKey constraint) {
-        getContainer().getPrimaryKeysCache().cacheObject(constraint);
+    void addUniqueKey(GenericUniqueKey constraint) {
+        getContainer().getConstraintKeysCache().cacheObject(constraint);
     }
 
     @Override
@@ -226,7 +227,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
     public synchronized DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException
     {
         this.getContainer().getIndexCache().clearObjectCache(this);
-        this.getContainer().getPrimaryKeysCache().clearObjectCache(this);
+        this.getContainer().getConstraintKeysCache().clearObjectCache(this);
         this.getContainer().getForeignKeysCache().clearObjectCache(this);
         return this.getContainer().getTableCache().refreshObject(monitor, getContainer(), this);
     }
@@ -381,7 +382,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
                 }
 
                 // Find PK
-                GenericPrimaryKey pk = null;
+                GenericUniqueKey pk = null;
                 if (!CommonUtils.isEmpty(info.pkName)) {
                     pk = DBUtils.findObject(this.getConstraints(monitor), info.pkName);
                     if (pk == null) {
@@ -389,9 +390,9 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
                     }
                 }
                 if (pk == null) {
-                    Collection<GenericPrimaryKey> uniqueKeys = this.getConstraints(monitor);
+                    Collection<GenericUniqueKey> uniqueKeys = this.getConstraints(monitor);
                     if (uniqueKeys != null) {
-                        for (GenericPrimaryKey pkConstraint : uniqueKeys) {
+                        for (GenericUniqueKey pkConstraint : uniqueKeys) {
                             if (pkConstraint.getConstraintType().isUnique() && DBUtils.getConstraintAttribute(monitor, pkConstraint, pkColumn) != null) {
                                 pk = pkConstraint;
                                 break;
@@ -403,7 +404,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
                     log.warn("Can't find unique key for table " + this.getFullyQualifiedName(DBPEvaluationContext.DDL) + " column " + pkColumn.getName());
                     // Too bad. But we have to create new fake PK for this FK
                     //String pkFullName = getFullyQualifiedName() + "." + info.pkName;
-                    pk = new GenericPrimaryKey(this, info.pkName, null, DBSEntityConstraintType.PRIMARY_KEY, true);
+                    pk = new GenericUniqueKey(this, info.pkName, null, DBSEntityConstraintType.PRIMARY_KEY, true);
                     pk.addColumn(new GenericTableConstraintColumn(pk, pkColumn, info.keySeq));
                     // Add this fake constraint to it's owner
                     this.addUniqueKey(pk);
@@ -440,7 +441,12 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
             return fkList;
         } catch (SQLException ex) {
-            throw new DBException(ex, getDataSource());
+            if (ex instanceof SQLFeatureNotSupportedException) {
+                log.debug("Error reading references", ex);
+                return Collections.emptyList();
+            } else {
+                throw new DBException(ex, getDataSource());
+            }
         }
     }
 

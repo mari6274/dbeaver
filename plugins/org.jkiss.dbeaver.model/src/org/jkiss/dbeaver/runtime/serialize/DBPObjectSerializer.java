@@ -17,7 +17,7 @@
 
 package org.jkiss.dbeaver.runtime.serialize;
 
-import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 
 import java.util.Map;
@@ -27,8 +27,8 @@ import java.util.Map;
  */
 public interface DBPObjectSerializer<CONTEXT_TYPE, OBJECT_TYPE> {
 
-    void serializeObject(DBRProgressMonitor monitor, OBJECT_TYPE object, Map<String, Object> state);
+    void serializeObject(DBRRunnableContext runnableContext, CONTEXT_TYPE context, OBJECT_TYPE object, Map<String, Object> state);
 
-    OBJECT_TYPE deserializeObject(DBRRunnableContext runnableContext, CONTEXT_TYPE objectContext, Map<String, Object> state);
+    OBJECT_TYPE deserializeObject(DBRRunnableContext runnableContext, CONTEXT_TYPE objectContext, Map<String, Object> state) throws DBCException;
 
 }

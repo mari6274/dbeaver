@@ -25,6 +25,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.jobs.Job;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.data.json.JSONUtils;
@@ -34,6 +35,7 @@ import org.jkiss.dbeaver.model.task.*;
 import org.jkiss.dbeaver.registry.ProjectMetadata;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.utils.CommonUtils;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +46,8 @@ import java.util.*;
  * TaskManagerImpl
  */
 public class TaskManagerImpl implements DBTTaskManager {
+
+    public static final String TEMPORARY_ID = "#temp";
 
     private static final Log log = Log.getLog(TaskManagerImpl.class);
 
@@ -132,18 +136,15 @@ public class TaskManagerImpl implements DBTTaskManager {
 
     @NotNull
     @Override
-    public DBTTask createTaskConfiguration(
+    public DBTTask createTask(
         @NotNull DBTTaskType taskDescriptor,
         @NotNull String label,
         @Nullable String description,
-        @NotNull Map<String, Object> properties)
+        @NotNull Map<String, Object> properties) throws DBException
     {
-/*
-        DBTTaskType taskDescriptor = getRegistry().getTask(taskId);
-        if (taskDescriptor == null) {
-            throw new DBException("Task " + taskId + " not found");
+        if (getTaskByName(label) != null) {
+            throw new DBException("Task with name '" + label + "' already exists");
         }
-*/
         Date createTime = new Date();
         String id = UUID.randomUUID().toString();
         TaskImpl task = new TaskImpl(projectMetadata, taskDescriptor, id, label, description, createTime, createTime);
@@ -152,8 +153,22 @@ public class TaskManagerImpl implements DBTTaskManager {
         return task;
     }
 
+    @NotNull
     @Override
-    public void updateTaskConfiguration(@NotNull DBTTask task) {
+    public DBTTask createTemporaryTask(@NotNull DBTTaskType type, @NotNull String label) {
+        return new TaskImpl(getProject(), type, TEMPORARY_ID, label, label, new Date(), null);
+    }
+
+    @Override
+    public void updateTaskConfiguration(@NotNull DBTTask task) throws DBException {
+        if (TEMPORARY_ID.equals(task.getId())) {
+            return;
+        }
+        DBTTask prevTask = getTaskByName(task.getName());
+        if (prevTask != null && prevTask != task) {
+            throw new DBException("Task with name '" + task.getName() + "' already exists");
+        }
+
         boolean newTask = false;
         synchronized (tasks) {
             if (!tasks.contains(task)) {
@@ -208,7 +223,7 @@ public class TaskManagerImpl implements DBTTaskManager {
                     try {
                         String id = taskMap.getKey();
                         String task = JSONUtils.getString(taskJSON, "task");
-                        String label = JSONUtils.getString(taskJSON, "label");
+                        String label = CommonUtils.toString(JSONUtils.getString(taskJSON, "label"), id);
                         String description = JSONUtils.getString(taskJSON, "description");
                         Date createTime = systemDateFormat.parse(JSONUtils.getString(taskJSON, "createTime"));
                         Date updateTime = systemDateFormat.parse(JSONUtils.getString(taskJSON, "updateTime"));

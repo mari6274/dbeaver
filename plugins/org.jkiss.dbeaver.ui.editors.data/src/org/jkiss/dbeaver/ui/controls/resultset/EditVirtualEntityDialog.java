@@ -51,6 +51,7 @@ import org.jkiss.utils.CommonUtils;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 public class EditVirtualEntityDialog extends BaseDialog {
@@ -334,7 +335,9 @@ public class EditVirtualEntityDialog extends BaseDialog {
     {
         if (editUniqueKeyPage != null) {
             Collection<DBSEntityAttribute> uniqueAttrs = editUniqueKeyPage.getSelectedAttributes();
-            uniqueConstraint.setAttributes(uniqueAttrs);
+            uniqueConstraint.setName(editUniqueKeyPage.getConstraintName());
+            uniqueConstraint.setUseAllColumns(editUniqueKeyPage.isUseAllColumns());
+            uniqueConstraint.setAttributes(uniqueConstraint.isUseAllColumns() ? Collections.emptyList() : uniqueAttrs);
             DBDRowIdentifier virtualEntityIdentifier = viewer.getVirtualEntityIdentifier();
             if (virtualEntityIdentifier != null) {
                 try {

@@ -152,8 +152,12 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
             Map<String, Object> consMap = consObject.getValue();
             String consType = JSONUtils.getString(consMap, "type");
             DBVEntityConstraint constraint = new DBVEntityConstraint(this, DBSEntityConstraintType.VIRTUAL_KEY, consName);
-            for (String attrName : JSONUtils.deserializeStringList(consMap, "attributes")) {
-                constraint.addAttribute(attrName);
+            boolean useAllColumns = JSONUtils.getBoolean(consMap, "useAllColumns");
+            constraint.setUseAllColumns(useAllColumns);
+            if (!useAllColumns) {
+                for (String attrName : JSONUtils.deserializeStringList(consMap, "attributes")) {
+                    constraint.addAttribute(attrName);
+                }
             }
             if (entityConstraints == null) entityConstraints = new ArrayList<>();
             entityConstraints.add(constraint);
@@ -389,7 +393,10 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
             entityConstraints = new ArrayList<>();
         }
         if (entityConstraints.isEmpty()) {
-            entityConstraints.add(new DBVEntityConstraint(this, DBSEntityConstraintType.VIRTUAL_KEY, "PRIMARY"));
+            entityConstraints.add(new DBVEntityConstraint(
+                this,
+                DBSEntityConstraintType.VIRTUAL_KEY,
+                "VIRTUAL_PK"));
         }
         for (DBVEntityConstraint constraint : entityConstraints) {
             if (constraint.getConstraintType().isUnique()) {
@@ -494,9 +501,7 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
         return result;
     }
 
-    public static String getDefaultDescriptionColumn(DBRProgressMonitor monitor, DBSEntityAttribute keyColumn)
-        throws DBException {
-        assert keyColumn.getParentObject() != null;
+    public static String getDefaultDescriptionColumn(DBRProgressMonitor monitor, DBSEntityAttribute keyColumn) throws DBException {
 
         Collection<? extends DBSEntityAttribute> allColumns = keyColumn.getParentObject().getAttributes(monitor);
         if (allColumns == null || allColumns.isEmpty()) {
@@ -565,12 +570,7 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
         if (colorOverrides == null) {
             colorOverrides = new ArrayList<>();
         } else {
-            for (Iterator<DBVColorOverride> iterator = colorOverrides.iterator(); iterator.hasNext(); ) {
-                DBVColorOverride c = iterator.next();
-                if (c.matches(attrName, DBCLogicalOperator.EQUALS, co.getAttributeValues())) {
-                    iterator.remove();
-                }
-            }
+            colorOverrides.removeIf(c -> c.matches(attrName, DBCLogicalOperator.EQUALS, co.getAttributeValues()));
         }
         colorOverrides.add(co);
     }

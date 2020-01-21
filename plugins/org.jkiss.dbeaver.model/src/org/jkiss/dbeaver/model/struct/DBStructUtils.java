@@ -25,7 +25,6 @@ import org.jkiss.dbeaver.model.edit.DBERegistry;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.impl.sql.edit.struct.SQLTableManager;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.model.sql.SQLDataSource;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
@@ -57,7 +56,7 @@ public final class DBStructUtils {
         final SQLObjectEditor entityEditor = editorsRegistry.getObjectManager(object.getClass(), SQLObjectEditor.class);
         if (entityEditor != null) {
             SQLObjectEditor.ObjectCreateCommand createCommand = entityEditor.makeCreateCommand(object, options);
-            DBEPersistAction[] ddlActions = createCommand.getPersistActions(monitor, options);
+            DBEPersistAction[] ddlActions = createCommand.getPersistActions(monitor, DBUtils.getDefaultContext(object, true), options);
 
             return SQLUtils.generateScript(object.getDataSource(), ddlActions, addComments);
         }
@@ -264,9 +263,9 @@ public final class DBStructUtils {
         }
 
         // Get type modifiers from target datasource
-        if (objectContainer instanceof SQLDataSource) {
-            SQLDialect dialect = ((SQLDataSource) objectContainer).getSQLDialect();
-            String modifiers = dialect.getColumnTypeModifiers((SQLDataSource)objectContainer, typedObject, typeName, dataKind);
+        if (objectContainer instanceof DBPDataSource) {
+            SQLDialect dialect = ((DBPDataSource) objectContainer).getSQLDialect();
+            String modifiers = dialect.getColumnTypeModifiers((DBPDataSource)objectContainer, typedObject, typeName, dataKind);
             if (modifiers != null) {
                 typeName += modifiers;
             }
